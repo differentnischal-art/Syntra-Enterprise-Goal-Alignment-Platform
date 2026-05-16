@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,11 +22,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
+import { getAuditLogs, type AuditLogRow } from '@/lib/data/audit-logs'
 import { mockAuditLogs } from '@/lib/mock-data'
-import { AuditLog } from '@/lib/types'
-import { 
-  ClipboardList, 
-  Search, 
+import type { UserRole } from '@/lib/types'
+import {
+  ClipboardList,
+  Search,
   Filter,
   Download,
   Clock,
@@ -37,64 +39,147 @@ import {
   FileCheck,
   FilePlus,
   FileX,
-  Send
+  Send,
 } from 'lucide-react'
 
+type AuditTrailEntry = {
+  id: string
+  auditId: string
+  actorName: string
+  actorRole: UserRole | null
+  employeeName: string
+  goalTitle: string
+  actionType: string
+  fieldChanged: string | null
+  oldValue: string | null
+  newValue: string | null
+  description: string | null
+  timestamp: string
+}
+
+function labelAction(actionType: string): string {
+  return actionType
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function mapLiveAuditLog(row: AuditLogRow): AuditTrailEntry {
+  return {
+    id: row.id,
+    auditId: row.auditId,
+    actorName: row.actorName,
+    actorRole: row.actorRole,
+    employeeName: row.employeeName,
+    goalTitle: row.goalTitle,
+    actionType: row.actionType,
+    fieldChanged: row.fieldChanged,
+    oldValue: row.oldValue,
+    newValue: row.newValue,
+    description: row.description,
+    timestamp: row.createdAt,
+  }
+}
+
+function mapMockAuditLog(log: (typeof mockAuditLogs)[number]): AuditTrailEntry {
+  return {
+    id: log.id,
+    auditId: log.auditId,
+    actorName: log.changedBy,
+    actorRole: log.changedByRole,
+    employeeName: log.employeeName,
+    goalTitle: log.goalTitle,
+    actionType: log.actionType,
+    fieldChanged: log.fieldChanged,
+    oldValue: log.oldValue,
+    newValue: log.newValue,
+    description: `${log.changedBy} changed ${log.fieldChanged}`,
+    timestamp: log.timestamp,
+  }
+}
+
 export default function AuditTrailPage() {
-  const [auditLogs] = useState<AuditLog[]>(mockAuditLogs)
+  const { liveProfile } = useCurrentProfile()
+  const [liveAuditLogs, setLiveAuditLogs] = useState<AuditTrailEntry[] | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [actionFilter, setActionFilter] = useState<string>('all')
   const [roleFilter, setRoleFilter] = useState<string>('all')
 
-  const filteredLogs = auditLogs.filter((log) => {
-    const matchesSearch = 
-      log.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.goalTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.auditId.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesAction = actionFilter === 'all' || log.actionType === actionFilter
-    const matchesRole = roleFilter === 'all' || log.changedByRole === roleFilter
-    return matchesSearch && matchesAction && matchesRole
-  })
+  useEffect(() => {
+    if (liveProfile?.role !== 'admin') {
+      setLiveAuditLogs(null)
+      return
+    }
+
+    let cancelled = false
+    getAuditLogs().then((logs) => {
+      if (!cancelled) {
+        setLiveAuditLogs(logs.map(mapLiveAuditLog))
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [liveProfile])
+
+  const auditLogs = liveAuditLogs ?? mockAuditLogs.map(mapMockAuditLog)
+  const isLiveMode = liveAuditLogs !== null
+
+  const filteredLogs = useMemo(() => {
+    return auditLogs.filter((log) => {
+      const query = searchTerm.toLowerCase()
+      const matchesSearch =
+        log.employeeName.toLowerCase().includes(query) ||
+        log.goalTitle.toLowerCase().includes(query) ||
+        log.auditId.toLowerCase().includes(query) ||
+        log.actorName.toLowerCase().includes(query) ||
+        (log.description ?? '').toLowerCase().includes(query)
+      const matchesAction = actionFilter === 'all' || log.actionType === actionFilter
+      const matchesRole = roleFilter === 'all' || log.actorRole === roleFilter
+      return matchesSearch && matchesAction && matchesRole
+    })
+  }, [actionFilter, auditLogs, roleFilter, searchTerm])
+
+  const actionOptions = useMemo(() => {
+    return Array.from(new Set(auditLogs.map((log) => log.actionType))).sort()
+  }, [auditLogs])
 
   const getActionIcon = (actionType: string) => {
     switch (actionType) {
       case 'create':
+      case 'goal_created':
         return <FilePlus className="h-4 w-4 text-success" />
-      case 'update':
-        return <FileEdit className="h-4 w-4 text-primary" />
       case 'approve':
+      case 'goal_approved':
         return <FileCheck className="h-4 w-4 text-success" />
       case 'return':
+      case 'goal_returned':
         return <FileX className="h-4 w-4 text-warning-foreground" />
       case 'submit':
+      case 'goal_submitted':
+      case 'checkin_submitted':
         return <Send className="h-4 w-4 text-primary" />
       case 'delete':
         return <FileX className="h-4 w-4 text-destructive" />
       default:
-        return <FileEdit className="h-4 w-4" />
+        return <FileEdit className="h-4 w-4 text-primary" />
     }
   }
 
   const getActionBadge = (actionType: string) => {
-    switch (actionType) {
-      case 'create':
-        return <Badge className="bg-success/10 text-success">Created</Badge>
-      case 'update':
-        return <Badge className="bg-primary/10 text-primary">Updated</Badge>
-      case 'approve':
-        return <Badge className="bg-success/10 text-success">Approved</Badge>
-      case 'return':
-        return <Badge className="bg-warning/10 text-warning-foreground">Returned</Badge>
-      case 'submit':
-        return <Badge className="bg-primary/10 text-primary">Submitted</Badge>
-      case 'delete':
-        return <Badge className="bg-destructive/10 text-destructive">Deleted</Badge>
-      default:
-        return <Badge variant="secondary">{actionType}</Badge>
-    }
+    const className =
+      actionType.includes('approved')
+        ? 'bg-success/10 text-success'
+        : actionType.includes('returned')
+          ? 'bg-warning/10 text-warning-foreground'
+          : actionType.includes('delete')
+            ? 'bg-destructive/10 text-destructive'
+            : 'bg-primary/10 text-primary'
+
+    return <Badge className={className}>{labelAction(actionType)}</Badge>
   }
 
-  const getRoleIcon = (role: string) => {
+  const getRoleIcon = (role: UserRole | null) => {
     switch (role) {
       case 'employee':
         return <User className="h-4 w-4" />
@@ -126,7 +211,12 @@ export default function AuditTrailPage() {
       <DashboardHeader title="Audit Trail" />
 
       <div className="p-6 space-y-6">
-        {/* Recent Changes Timeline */}
+        <div className="flex justify-end">
+          <Badge variant="outline">
+            {isLiveMode ? 'Live Supabase audit logs' : 'Demo audit logs'}
+          </Badge>
+        </div>
+
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
@@ -146,19 +236,19 @@ export default function AuditTrailPage() {
                   </div>
                   <div className="flex-1 pb-4">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium">{log.changedBy}</span>
-                      <span className="text-muted-foreground">
-                        {log.actionType === 'update' ? 'updated' : log.actionType + 'd'}
-                      </span>
-                      <span className="font-medium">{log.fieldChanged}</span>
+                      <span className="font-medium">{log.actorName}</span>
+                      <span className="text-muted-foreground">{labelAction(log.actionType)}</span>
+                      {log.fieldChanged && (
+                        <span className="font-medium">{log.fieldChanged}</span>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground mb-1">
-                      {log.goalTitle} ({log.employeeName})
+                      {log.description ?? `${log.goalTitle} (${log.employeeName})`}
                     </p>
                     {log.oldValue && log.newValue && (
                       <div className="text-xs text-muted-foreground">
                         <span className="line-through">{log.oldValue}</span>
-                        {' → '}
+                        {' -> '}
                         <span className="text-foreground font-medium">{log.newValue}</span>
                       </div>
                     )}
@@ -173,7 +263,6 @@ export default function AuditTrailPage() {
           </CardContent>
         </Card>
 
-        {/* Audit Log Table */}
         <Card className="shadow-sm">
           <CardHeader>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -190,29 +279,28 @@ export default function AuditTrailPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {/* Filters */}
             <div className="flex flex-wrap items-center gap-3 mb-6">
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="Search by audit ID, employee, or goal..."
+                  placeholder="Search by audit ID, employee, actor, or description..."
                   className="pl-9"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
               <Select value={actionFilter} onValueChange={setActionFilter}>
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-[180px]">
                   <Filter className="mr-2 h-4 w-4" />
                   <SelectValue placeholder="Action" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Actions</SelectItem>
-                  <SelectItem value="create">Created</SelectItem>
-                  <SelectItem value="update">Updated</SelectItem>
-                  <SelectItem value="approve">Approved</SelectItem>
-                  <SelectItem value="return">Returned</SelectItem>
-                  <SelectItem value="submit">Submitted</SelectItem>
+                  {actionOptions.map((action) => (
+                    <SelectItem key={action} value={action}>
+                      {labelAction(action)}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Select value={roleFilter} onValueChange={setRoleFilter}>
@@ -228,18 +316,18 @@ export default function AuditTrailPage() {
               </Select>
             </div>
 
-            {/* Table */}
             <div className="rounded-lg border border-border overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent bg-muted/50">
                     <TableHead className="w-[120px]">Audit ID</TableHead>
+                    <TableHead>Actor</TableHead>
                     <TableHead>Employee</TableHead>
-                    <TableHead>Goal Title</TableHead>
+                    <TableHead>Action Type</TableHead>
                     <TableHead>Field Changed</TableHead>
                     <TableHead className="hidden md:table-cell">Old Value</TableHead>
                     <TableHead className="hidden md:table-cell">New Value</TableHead>
-                    <TableHead>Changed By</TableHead>
+                    <TableHead>Description</TableHead>
                     <TableHead className="w-[150px]">Timestamp</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -255,18 +343,17 @@ export default function AuditTrailPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="font-medium">{log.employeeName}</span>
-                      </TableCell>
-                      <TableCell className="max-w-[180px]">
-                        <span className="line-clamp-1 text-sm" title={log.goalTitle}>
-                          {log.goalTitle}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {getRoleIcon(log.actorRole)}
+                          <span className="text-sm">{log.actorName}</span>
+                        </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getActionBadge(log.actionType)}
-                          <span className="text-sm">{log.fieldChanged}</span>
-                        </div>
+                        <span className="font-medium">{log.employeeName}</span>
+                      </TableCell>
+                      <TableCell>{getActionBadge(log.actionType)}</TableCell>
+                      <TableCell>
+                        <span className="text-sm">{log.fieldChanged || '-'}</span>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <span className="text-sm text-muted-foreground">
@@ -278,11 +365,10 @@ export default function AuditTrailPage() {
                           {log.newValue || '-'}
                         </span>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getRoleIcon(log.changedByRole)}
-                          <span className="text-sm">{log.changedBy}</span>
-                        </div>
+                      <TableCell className="max-w-[220px]">
+                        <span className="line-clamp-2 text-sm" title={log.description ?? log.goalTitle}>
+                          {log.description ?? log.goalTitle}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <span className="text-xs text-muted-foreground">

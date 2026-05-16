@@ -4,6 +4,8 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
+import { createAuditLog } from '@/lib/data/audit-logs'
+import { createNotification } from '@/lib/data/notifications'
 import {
   deleteGoalsForSheet,
   insertGoalsForSheet,
@@ -512,10 +514,35 @@ export async function submitGoalSheet(
       return { goalSheet: null, error: error.message }
     }
 
-    // TODO: create audit log when audit_logs slice is implemented
-    // TODO: create notification for manager when notifications slice is implemented
+    const savedSheet = mapRow(data as DbGoalSheetRow)
 
-    return { goalSheet: mapRow(data as DbGoalSheetRow), error: null }
+    try {
+      await createAuditLog({
+        actorId: params.employeeId,
+        actorRole: 'employee',
+        employeeId: params.employeeId,
+        goalSheetId: savedSheet.id,
+        actionType: 'goal_submitted',
+        fieldChanged: 'Goal Sheet Status',
+        oldValue: sheet.status,
+        newValue: 'pending_approval',
+        description: 'Employee submitted a goal sheet for approval',
+      })
+
+      if (savedSheet.managerId) {
+        await createNotification({
+          userId: savedSheet.managerId,
+          type: 'goal_submitted',
+          title: 'Goal Sheet Submitted',
+          message: 'Employee submitted a goal sheet for approval',
+          link: '/manager/approvals',
+        })
+      }
+    } catch (err) {
+      console.error('[submitGoalSheet] audit/notification error:', err)
+    }
+
+    return { goalSheet: savedSheet, error: null }
   } catch (err) {
     return {
       goalSheet: null,

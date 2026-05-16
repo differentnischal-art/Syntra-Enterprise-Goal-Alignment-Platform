@@ -4,6 +4,8 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
+import { createAuditLog } from '@/lib/data/audit-logs'
+import { createNotification } from '@/lib/data/notifications'
 import {
   isRealUuid,
   mapGoalRowToGoal,
@@ -32,6 +34,11 @@ type DbReviewRow = {
 
 type DbGoalSheetWithEmployee = DbGoalSheetRowWithRelations & {
   profiles: DbProfileEmbed | DbProfileEmbed[] | null
+}
+
+type DbGoalSheetActionContext = {
+  employee_id: string
+  status: string
 }
 
 export type ApprovalReviewEntry = {
@@ -312,6 +319,13 @@ export async function approveGoalSheet(
   const now = new Date().toISOString()
 
   try {
+    const { data: sheetContext } = await supabase
+      .from('goal_sheets')
+      .select('employee_id, status')
+      .eq('id', goalSheetId)
+      .eq('manager_id', managerId)
+      .maybeSingle()
+
     const { error: sheetError } = await supabase
       .from('goal_sheets')
       .update({
@@ -354,8 +368,32 @@ export async function approveGoalSheet(
       return { success: false, error: reviewError.message }
     }
 
-    // TODO: create audit log when audit_logs slice is implemented
-    // TODO: notify employee when notifications slice is implemented
+    try {
+      const context = sheetContext as DbGoalSheetActionContext | null
+      if (context?.employee_id) {
+        await createAuditLog({
+          actorId: managerId,
+          actorRole: 'manager',
+          employeeId: context.employee_id,
+          goalSheetId,
+          actionType: 'goal_approved',
+          fieldChanged: 'Goal Sheet Status',
+          oldValue: context.status,
+          newValue: 'locked',
+          description: 'Manager approved and locked the goal sheet',
+        })
+
+        await createNotification({
+          userId: context.employee_id,
+          type: 'goal_approved',
+          title: 'Goal Sheet Approved',
+          message: 'Your goal sheet has been approved and locked',
+          link: '/employee/my-goal-sheet',
+        })
+      }
+    } catch (err) {
+      console.error('[approveGoalSheet] audit/notification error:', err)
+    }
 
     return { success: true, error: null }
   } catch (err) {
@@ -392,6 +430,13 @@ export async function returnGoalSheetForRework(
   const now = new Date().toISOString()
 
   try {
+    const { data: sheetContext } = await supabase
+      .from('goal_sheets')
+      .select('employee_id, status')
+      .eq('id', goalSheetId)
+      .eq('manager_id', managerId)
+      .maybeSingle()
+
     const { error: sheetError } = await supabase
       .from('goal_sheets')
       .update({
@@ -432,8 +477,32 @@ export async function returnGoalSheetForRework(
       return { success: false, error: reviewError.message }
     }
 
-    // TODO: create audit log when audit_logs slice is implemented
-    // TODO: notify employee when notifications slice is implemented
+    try {
+      const context = sheetContext as DbGoalSheetActionContext | null
+      if (context?.employee_id) {
+        await createAuditLog({
+          actorId: managerId,
+          actorRole: 'manager',
+          employeeId: context.employee_id,
+          goalSheetId,
+          actionType: 'goal_returned',
+          fieldChanged: 'Goal Sheet Status',
+          oldValue: context.status,
+          newValue: 'returned',
+          description: 'Manager returned the goal sheet for rework',
+        })
+
+        await createNotification({
+          userId: context.employee_id,
+          type: 'goal_returned',
+          title: 'Goal Sheet Returned',
+          message: 'Your manager returned your goal sheet for rework',
+          link: '/employee/my-goal-sheet',
+        })
+      }
+    } catch (err) {
+      console.error('[returnGoalSheetForRework] audit/notification error:', err)
+    }
 
     return { success: true, error: null }
   } catch (err) {

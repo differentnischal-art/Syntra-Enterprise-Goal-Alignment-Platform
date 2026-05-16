@@ -4,6 +4,8 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
+import { createAuditLog } from '@/lib/data/audit-logs'
+import { createNotification } from '@/lib/data/notifications'
 import {
   isRealUuid,
   mapGoalRowToGoal,
@@ -132,6 +134,17 @@ type DbGoalSheetForCheckIns = {
     departments: { name: string } | { name: string }[] | null
   }[] | null
   goals: DbGoalRow[] | null
+}
+
+type DbGoalSheetNotificationContext = {
+  manager_id: string | null
+}
+
+type DbCheckInNotificationContext = {
+  id: string
+  employee_id: string
+  goal_id: string
+  goal_sheet_id: string
 }
 
 const GOAL_SHEET_CHECKIN_SELECT = `
@@ -524,8 +537,38 @@ export async function submitEmployeeQuarterlyCheckIns(
       return { rows: null, error: error.message }
     }
 
-    // TODO: create audit log when audit_logs slice is implemented.
-    // TODO: notify manager when notifications slice is implemented.
+    try {
+      await createAuditLog({
+        actorId: params.employeeId,
+        actorRole: 'employee',
+        employeeId: params.employeeId,
+        goalSheetId: params.goalSheetId,
+        actionType: 'checkin_submitted',
+        fieldChanged: `${params.quarter.toUpperCase()} Check-in`,
+        newValue: 'submitted',
+        description: 'Employee submitted quarterly check-in updates',
+      })
+
+      const { data: sheetContext } = await supabase
+        .from('goal_sheets')
+        .select('manager_id')
+        .eq('id', params.goalSheetId)
+        .eq('employee_id', params.employeeId)
+        .maybeSingle()
+
+      const context = sheetContext as DbGoalSheetNotificationContext | null
+      if (context?.manager_id) {
+        await createNotification({
+          userId: context.manager_id,
+          type: 'checkin_submitted',
+          title: 'Quarterly Check-in Submitted',
+          message: 'Employee submitted quarterly check-in updates',
+          link: '/manager/check-ins',
+        })
+      }
+    } catch (err) {
+      console.error('[submitEmployeeQuarterlyCheckIns] audit/notification error:', err)
+    }
 
     return { rows: (data ?? []) as DbQuarterlyCheckInRow[], error: null }
   } catch (err) {
@@ -706,10 +749,42 @@ export async function addManagerCheckInComment(
       return { comment: null, error: error.message }
     }
 
-    // TODO: create audit log when audit_logs slice is implemented.
-    // TODO: notify employee when notifications slice is implemented.
+    const mappedComment = mapCommentRow(data as DbCommentRow)
 
-    return { comment: mapCommentRow(data as DbCommentRow), error: null }
+    try {
+      const { data: checkInContext } = await supabase
+        .from('quarterly_checkins')
+        .select('id, employee_id, goal_id, goal_sheet_id')
+        .eq('id', checkinId)
+        .maybeSingle()
+
+      const context = checkInContext as DbCheckInNotificationContext | null
+      if (context?.employee_id) {
+        await createAuditLog({
+          actorId: managerId,
+          actorRole: 'manager',
+          employeeId: context.employee_id,
+          goalId: context.goal_id,
+          goalSheetId: context.goal_sheet_id,
+          actionType: 'comment_added',
+          fieldChanged: 'Manager Comment',
+          newValue: trimmed,
+          description: 'Manager added feedback on a quarterly check-in',
+        })
+
+        await createNotification({
+          userId: context.employee_id,
+          type: 'comment_added',
+          title: 'Manager Comment Added',
+          message: 'Your manager added feedback on your check-in',
+          link: '/employee/quarterly-check-ins',
+        })
+      }
+    } catch (err) {
+      console.error('[addManagerCheckInComment] audit/notification error:', err)
+    }
+
+    return { comment: mappedComment, error: null }
   } catch (err) {
     return {
       comment: null,
