@@ -64,6 +64,9 @@ export function LandingPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <Link href="/demo-guide">
+                <Button variant="ghost" size="sm">Demo Guide</Button>
+              </Link>
               <Link href="#demo">
                 <Button variant="ghost" size="sm">View Demo</Button>
               </Link>
@@ -381,6 +384,12 @@ export function LandingPage() {
               <p className="text-sm text-muted-foreground">Built for AtomQuest Hackathon 1.0</p>
               <p className="text-xs text-muted-foreground">In-House Goal Setting & Tracking Portal</p>
             </div>
+            <Link href="/demo-guide" className="mt-2">
+              <Button variant="outline" size="sm">
+                View Demo Guide
+                <ChevronRight className="ml-1 h-4 w-4" />
+              </Button>
+            </Link>
           </div>
         </div>
       </footer>

@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { Header } from '@/components/layout/header'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -26,10 +26,10 @@ import {
   Send, 
   CheckCircle2, 
   AlertCircle,
-  FileText,
-  User,
-  ChevronRight,
   Info,
+  ChevronRight,
+  Lock,
+  Clock,
 } from 'lucide-react'
 
 interface DraftGoal {
@@ -52,13 +52,6 @@ const emptyGoal: () => DraftGoal = () => ({
   weightage: '',
 })
 
-const steps = [
-  { id: 1, name: 'Draft Goals', description: 'Create your goals' },
-  { id: 2, name: 'Validate Weightage', description: 'Ensure 100% total' },
-  { id: 3, name: 'Submit for Approval', description: 'Send to manager' },
-  { id: 4, name: 'Manager Review', description: 'Await approval' },
-]
-
 const uomOptions = [
   { value: 'numeric-higher-better', label: 'Numeric - Higher is Better' },
   { value: 'numeric-lower-better', label: 'Numeric - Lower is Better' },
@@ -68,9 +61,12 @@ const uomOptions = [
 ]
 
 export default function CreateGoalSheetPage() {
-  const [currentStep, setCurrentStep] = useState(1)
   const [goals, setGoals] = useState<DraftGoal[]>([emptyGoal()])
+  const [sheetStatus, setSheetStatus] = useState<'draft' | 'pending' | 'approved'>('draft')
+  const [showDraftSaved, setShowDraftSaved] = useState(false)
+  const [showSubmitSuccess, setShowSubmitSuccess] = useState(false)
 
+  // Calculate validation state
   const totalWeightage = goals.reduce((sum, g) => sum + (parseInt(g.weightage) || 0), 0)
   const goalsCount = goals.filter(g => g.title.trim()).length
 
@@ -87,21 +83,60 @@ export default function CreateGoalSheetPage() {
                   !validationErrors.incompleteGoals &&
                   goalsCount >= 1
 
+  // Calculate current step based on form state
+  const currentStep = useMemo(() => {
+    if (sheetStatus === 'pending') return 4
+    if (showSubmitSuccess) return 4
+    
+    // Step 1: At least one goal with required fields
+    const hasOneCompleteGoal = goals.some(g => 
+      g.title.trim() && g.thrustArea && g.target && g.weightage
+    )
+    if (!hasOneCompleteGoal) return 1
+    
+    // Step 2: All validations pass
+    if (!isValid) return 2
+    
+    // Step 3: Ready to submit
+    return 3
+  }, [goals, isValid, sheetStatus, showSubmitSuccess])
+
+  const steps = [
+    { id: 1, name: 'Draft Goals', description: 'Create your goals' },
+    { id: 2, name: 'Validate Weightage', description: 'Ensure 100% total' },
+    { id: 3, name: 'Submit for Approval', description: 'Send to manager' },
+    { id: 4, name: 'Manager Review', description: 'Await approval' },
+  ]
+
   const addGoal = () => {
-    if (goals.length < 8) {
+    if (goals.length < 8 && sheetStatus === 'draft') {
       setGoals([...goals, emptyGoal()])
     }
   }
 
   const removeGoal = (id: string) => {
-    if (goals.length > 1) {
+    if (goals.length > 1 && sheetStatus === 'draft') {
       setGoals(goals.filter(g => g.id !== id))
     }
   }
 
   const updateGoal = (id: string, field: keyof DraftGoal, value: string) => {
+    if (sheetStatus !== 'draft') return
     setGoals(goals.map(g => g.id === id ? { ...g, [field]: value } : g))
   }
+
+  const handleSaveDraft = () => {
+    setShowDraftSaved(true)
+    setTimeout(() => setShowDraftSaved(false), 3000)
+  }
+
+  const handleSubmit = () => {
+    if (!isValid) return
+    setSheetStatus('pending')
+    setShowSubmitSuccess(true)
+  }
+
+  const isEditable = sheetStatus === 'draft'
 
   return (
     <DashboardLayout role="employee">
@@ -116,9 +151,17 @@ export default function CreateGoalSheetPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center gap-3">
-              <Badge variant="outline" className="bg-warning/10 text-warning-foreground border-warning/20">
-                Draft
-              </Badge>
+              {sheetStatus === 'draft' && (
+                <Badge variant="outline" className="bg-warning/10 text-warning-foreground border-warning/20">
+                  Draft
+                </Badge>
+              )}
+              {sheetStatus === 'pending' && (
+                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 gap-1">
+                  <Clock className="h-3 w-3" />
+                  Pending Approval
+                </Badge>
+              )}
               <span className="text-sm text-muted-foreground">Cycle: {mockGoalCycle.name}</span>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
@@ -126,18 +169,46 @@ export default function CreateGoalSheetPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">
+            <Button variant="outline" onClick={handleSaveDraft} disabled={!isEditable}>
               <Save className="mr-2 h-4 w-4" />
               Save Draft
             </Button>
-            <Button disabled={!isValid}>
+            <Button onClick={handleSubmit} disabled={!isValid || !isEditable}>
               <Send className="mr-2 h-4 w-4" />
               Submit for Approval
             </Button>
           </div>
         </div>
 
-        {/* Stepper */}
+        {/* Success/Info Messages */}
+        {showDraftSaved && (
+          <Alert className="border-success/30 bg-success/5">
+            <CheckCircle2 className="h-4 w-4 text-success" />
+            <AlertDescription className="text-success">
+              Draft saved locally for demo.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {showSubmitSuccess && (
+          <Alert className="border-success/30 bg-success/5">
+            <CheckCircle2 className="h-4 w-4 text-success" />
+            <AlertDescription className="text-success">
+              <span className="font-medium">Goal sheet submitted for manager approval.</span> You will be notified once it is reviewed.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {sheetStatus === 'pending' && (
+          <Alert className="border-primary/30 bg-primary/5">
+            <Lock className="h-4 w-4 text-primary" />
+            <AlertDescription className="text-primary">
+              Your goal sheet is pending manager approval. Editing is disabled until approval or return.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Interactive Stepper */}
         <Card className="border-border/60">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -145,24 +216,28 @@ export default function CreateGoalSheetPage() {
                 <div key={step.id} className="flex items-center">
                   <div className="flex items-center gap-3">
                     <div className={`
-                      flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium
+                      flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-all duration-300
                       ${step.id < currentStep 
                         ? 'bg-success text-success-foreground' 
                         : step.id === currentStep 
-                          ? 'bg-primary text-primary-foreground'
+                          ? 'bg-primary text-primary-foreground ring-4 ring-primary/20'
                           : 'bg-muted text-muted-foreground'}
                     `}>
                       {step.id < currentStep ? <CheckCircle2 className="h-4 w-4" /> : step.id}
                     </div>
                     <div className="hidden sm:block">
-                      <p className={`text-sm font-medium ${step.id === currentStep ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <p className={`text-sm font-medium ${step.id <= currentStep ? 'text-foreground' : 'text-muted-foreground'}`}>
                         {step.name}
                       </p>
                       <p className="text-xs text-muted-foreground">{step.description}</p>
                     </div>
                   </div>
                   {index < steps.length - 1 && (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground mx-4 hidden sm:block" />
+                    <div className="hidden sm:flex items-center mx-4">
+                      <div className={`h-0.5 w-8 transition-all duration-300 ${step.id < currentStep ? 'bg-success' : 'bg-border'}`} />
+                      <ChevronRight className={`h-4 w-4 ${step.id < currentStep ? 'text-success' : 'text-muted-foreground/40'}`} />
+                      <div className={`h-0.5 w-8 transition-all duration-300 ${step.id < currentStep ? 'bg-success' : 'bg-border'}`} />
+                    </div>
                   )}
                 </div>
               ))}
@@ -171,7 +246,7 @@ export default function CreateGoalSheetPage() {
         </Card>
 
         {/* Validation Panel */}
-        <Card className={`border-border/60 ${isValid ? 'border-success/50 bg-success/5' : ''}`}>
+        <Card className={`border-border/60 transition-all duration-300 ${isValid ? 'border-success/50 bg-success/5' : ''}`}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               {isValid ? (
@@ -186,7 +261,7 @@ export default function CreateGoalSheetPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="flex items-center gap-3">
                 <div className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg
+                  flex h-10 w-10 items-center justify-center rounded-lg transition-all duration-300
                   ${totalWeightage === 100 ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning-foreground'}
                 `}>
                   <span className="text-sm font-semibold">{totalWeightage}%</span>
@@ -199,7 +274,7 @@ export default function CreateGoalSheetPage() {
 
               <div className="flex items-center gap-3">
                 <div className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg
+                  flex h-10 w-10 items-center justify-center rounded-lg transition-all duration-300
                   ${goalsCount >= 1 && goalsCount <= 8 ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning-foreground'}
                 `}>
                   <span className="text-sm font-semibold">{goalsCount}/8</span>
@@ -212,7 +287,7 @@ export default function CreateGoalSheetPage() {
 
               <div className="flex items-center gap-3">
                 <div className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg
+                  flex h-10 w-10 items-center justify-center rounded-lg transition-all duration-300
                   ${!validationErrors.minWeightageBreach ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}
                 `}>
                   {!validationErrors.minWeightageBreach ? (
@@ -229,7 +304,7 @@ export default function CreateGoalSheetPage() {
 
               <div className="flex items-center gap-3">
                 <div className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg
+                  flex h-10 w-10 items-center justify-center rounded-lg transition-all duration-300
                   ${!validationErrors.incompleteGoals ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning-foreground'}
                 `}>
                   {!validationErrors.incompleteGoals ? (
@@ -250,21 +325,24 @@ export default function CreateGoalSheetPage() {
         {/* Goal Entry Cards */}
         <div className="space-y-4">
           {goals.map((goal, index) => (
-            <Card key={goal.id} className="border-border/60">
+            <Card key={goal.id} className={`border-border/60 ${!isEditable ? 'opacity-75' : ''}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold">Goal {index + 1}</CardTitle>
-                  {goals.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => removeGoal(goal.id)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Remove
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {!isEditable && <Lock className="h-4 w-4 text-muted-foreground" />}
+                    {goals.length > 1 && isEditable && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => removeGoal(goal.id)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -276,6 +354,7 @@ export default function CreateGoalSheetPage() {
                       placeholder="e.g., Improve API response time by 40%"
                       value={goal.title}
                       onChange={(e) => updateGoal(goal.id, 'title', e.target.value)}
+                      disabled={!isEditable}
                     />
                   </div>
                   <div className="space-y-2">
@@ -283,6 +362,7 @@ export default function CreateGoalSheetPage() {
                     <Select 
                       value={goal.thrustArea} 
                       onValueChange={(value) => updateGoal(goal.id, 'thrustArea', value)}
+                      disabled={!isEditable}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select thrust area" />
@@ -304,6 +384,7 @@ export default function CreateGoalSheetPage() {
                     value={goal.description}
                     onChange={(e) => updateGoal(goal.id, 'description', e.target.value)}
                     rows={2}
+                    disabled={!isEditable}
                   />
                 </div>
 
@@ -313,6 +394,7 @@ export default function CreateGoalSheetPage() {
                     <Select 
                       value={goal.unitOfMeasurement} 
                       onValueChange={(value) => updateGoal(goal.id, 'unitOfMeasurement', value as UnitOfMeasurement)}
+                      disabled={!isEditable}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -332,6 +414,7 @@ export default function CreateGoalSheetPage() {
                       placeholder="e.g., 40"
                       value={goal.target}
                       onChange={(e) => updateGoal(goal.id, 'target', e.target.value)}
+                      disabled={!isEditable}
                     />
                   </div>
                   <div className="space-y-2">
@@ -345,6 +428,7 @@ export default function CreateGoalSheetPage() {
                       value={goal.weightage}
                       onChange={(e) => updateGoal(goal.id, 'weightage', e.target.value)}
                       className={parseInt(goal.weightage) > 0 && parseInt(goal.weightage) < 10 ? 'border-destructive' : ''}
+                      disabled={!isEditable}
                     />
                     {parseInt(goal.weightage) > 0 && parseInt(goal.weightage) < 10 && (
                       <p className="text-xs text-destructive">Minimum 10% required</p>
@@ -357,7 +441,7 @@ export default function CreateGoalSheetPage() {
         </div>
 
         {/* Add Goal Button */}
-        {goals.length < 8 && (
+        {goals.length < 8 && isEditable && (
           <Button variant="outline" className="w-full border-dashed" onClick={addGoal}>
             <Plus className="mr-2 h-4 w-4" />
             Add Goal ({goals.length}/8)
