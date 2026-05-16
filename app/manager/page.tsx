@@ -9,7 +9,8 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { StatusBadge } from '@/components/goals/status-badge'
-import { mockTeamMembers, mockTeamGoals, mockActivityLogs, mockGoalCycle } from '@/lib/mock-data'
+import { mockTeamMembers, mockTeamGoals, mockActivityLogs } from '@/lib/mock-data'
+import { useManagerPendingApprovals } from '@/hooks/use-manager-pending-approvals'
 import { 
   Users, 
   Target, 
@@ -24,8 +25,18 @@ import {
 } from 'lucide-react'
 
 export default function ManagerDashboard() {
+  const {
+    dataSource,
+    pendingCount,
+    pendingSheets,
+    demoPendingMembers,
+  } = useManagerPendingApprovals()
+
+  const useSupabasePending = dataSource === 'supabase'
   const totalTeamMembers = mockTeamMembers.length
-  const pendingApprovals = mockTeamMembers.filter(m => m.approvalStatus === 'pending').length
+  const pendingApprovals = useSupabasePending
+    ? pendingCount
+    : demoPendingMembers.length
   const teamAvgAchievement = Math.round(
     mockTeamMembers.reduce((sum, m) => sum + m.averageAchievement, 0) / mockTeamMembers.length
   )
@@ -141,8 +152,38 @@ export default function ManagerDashboard() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border">
-                    {mockTeamMembers.filter(m => m.approvalStatus === 'pending').map((member) => (
-                      <div key={member.id} className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
+                    {useSupabasePending
+                      ? pendingSheets.map((sheet) => (
+                          <div
+                            key={sheet.goalSheetId}
+                            className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-9 w-9 border border-border">
+                                <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                                  {sheet.name
+                                    .split(' ')
+                                    .map((n) => n[0])
+                                    .join('')}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="text-sm font-medium">{sheet.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {sheet.goalsCount} goals | {sheet.totalWeightage}% weightage
+                                </p>
+                              </div>
+                            </div>
+                            <Button size="sm" asChild>
+                              <Link href="/manager/approvals">Review</Link>
+                            </Button>
+                          </div>
+                        ))
+                      : demoPendingMembers.map((member) => (
+                          <div
+                            key={member.id}
+                            className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
+                          >
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9 border border-border">
                             <AvatarFallback className="bg-primary/10 text-primary text-xs">
