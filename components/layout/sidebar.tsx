@@ -102,11 +102,14 @@ export function Sidebar({ role }: SidebarProps) {
             >
               <item.icon className={cn('h-4 w-4', isActive ? 'text-sidebar-primary-foreground' : 'text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground')} />
               <span className="flex-1">{item.label}</span>
-              {'badge' in item && item.badge && (
-                <Badge variant="secondary" className="h-5 min-w-5 justify-center rounded-full bg-destructive/90 px-1.5 text-[10px] font-semibold text-destructive-foreground">
-                  {item.badge}
-                </Badge>
-              )}
+              {'badge' in item && item.badge != null && (
+                <Badge
+                  variant="secondary"
+                  className="h-5 min-w-5 justify-center rounded-full bg-destructive/90 px-1.5 text-[10px] font-semibold text-destructive-foreground"
+                >
+                  {String(item.badge)}
+                 </Badge>
+                )}
               {isActive && <ChevronRight className="h-3 w-3 text-sidebar-primary-foreground/50" />}
             </Link>
           )
