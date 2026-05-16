@@ -42,5 +42,6 @@ npm start
 | 1 | Reference data, active goal cycle in sidebar |
 | 2 | Auth, profiles, login with mock fallback (`lib/data/auth.ts`, `lib/data/profiles.ts`) |
 | 3 | Dashboard headers use `DashboardHeader` + `useCurrentProfile()` (goal data still mock) |
+| 4 | Employee create goal sheet — save draft / submit to `goal_sheets` + `goals` |
 
 Use `components/layout/dashboard-header.tsx` on wired pages; business data on those pages still comes from `lib/mock-data.ts`.
