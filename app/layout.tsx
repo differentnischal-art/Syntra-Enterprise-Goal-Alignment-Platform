@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
@@ -6,8 +6,8 @@ import './globals.css'
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: 'GoalSync - Enterprise Goal Management',
-  description: 'Enterprise goal setting and tracking portal for HR teams',
+  title: 'AlignOS - Goal Lifecycle Suite',
+  description: 'Enterprise goal setting and tracking portal for organizational alignment',
   generator: 'v0.app',
   icons: {
     icon: [
@@ -26,6 +26,12 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#4f46e5',
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({
