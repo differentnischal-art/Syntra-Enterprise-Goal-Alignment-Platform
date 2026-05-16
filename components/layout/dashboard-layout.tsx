@@ -1,13 +1,14 @@
 'use client'
 
-import { useState } from 'react'
-import { UserRole } from '@/lib/types'
+import { useEffect, useState } from 'react'
+import { UserRole, type GoalCycle } from '@/lib/types'
 import { Sidebar } from './sidebar'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Menu, Layers, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { mockGoalCycle } from '@/lib/mock-data'
+import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
 import Link from 'next/link'
 
 interface DashboardLayoutProps {
@@ -17,6 +18,20 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ children, role }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // First Supabase slice: active cycle from DB when configured; mock fallback during migration.
+  const [activeGoalCycle, setActiveGoalCycle] = useState<GoalCycle>(mockGoalCycle)
+
+  useEffect(() => {
+    let cancelled = false
+    getActiveGoalCycle().then((cycle) => {
+      if (!cancelled) {
+        setActiveGoalCycle(cycle)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-background">
@@ -55,7 +70,7 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
                       <Clock className="h-3.5 w-3.5 text-primary" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-xs font-medium text-sidebar-foreground">{mockGoalCycle.name}</p>
+                      <p className="text-xs font-medium text-sidebar-foreground">{activeGoalCycle.name}</p>
                       <p className="text-[10px] text-sidebar-foreground/50">Active Cycle</p>
                     </div>
                     <Badge variant="outline" className="border-success/30 bg-success/10 text-success text-[10px]">
