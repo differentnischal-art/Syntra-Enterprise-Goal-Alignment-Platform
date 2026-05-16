@@ -21,6 +21,7 @@ import { mockEmployeeUser, mockGoalCycle, thrustAreas } from '@/lib/mock-data'
 import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
 import { saveGoalSheetDraft, submitGoalSheet } from '@/lib/data/goal-sheets'
 import type { GoalSheetGoalInput } from '@/lib/data/goals'
+import { isRealUuid } from '@/lib/data/goals'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import type { GoalCycle, UnitOfMeasurement } from '@/lib/types'
@@ -70,12 +71,6 @@ const uomOptions = [
   { value: 'zero-based', label: 'Zero Based' },
 ]
 
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value
-  )
-}
-
 function toGoalInputs(goals: DraftGoal[]): GoalSheetGoalInput[] {
   return goals
     .filter((g) => g.title.trim())
@@ -109,7 +104,7 @@ export default function CreateGoalSheetPage() {
     isSupabaseConfigured() &&
       liveProfile &&
       employeeId &&
-      isUuid(activeCycle.id)
+      isRealUuid(activeCycle.id)
   )
 
   useEffect(() => {

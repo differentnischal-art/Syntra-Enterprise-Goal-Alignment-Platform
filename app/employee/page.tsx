@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
@@ -8,15 +7,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { StatusBadge, SharedBadge, LockedBadge } from '@/components/goals/status-badge'
-import { mockEmployeeUser, mockGoals, mockGoalSheet, mockActivityLogs, mockGoalCycle } from '@/lib/mock-data'
-import { 
-  Target, 
-  Percent, 
-  Calendar, 
-  Lock, 
-  FileText, 
-  CalendarCheck, 
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { StatusBadge, SharedBadge } from '@/components/goals/status-badge'
+import { mockActivityLogs } from '@/lib/mock-data'
+import { useEmployeeGoalSheetData } from '@/hooks/use-employee-goal-sheet-data'
+import type { GoalSheetStatus } from '@/lib/types'
+import {
+  Target,
+  Calendar,
+  Lock,
+  FileText,
+  CalendarCheck,
   ChevronRight,
   CheckCircle2,
   Clock,
@@ -26,7 +27,6 @@ import {
   Share2,
 } from 'lucide-react'
 
-// Goal lifecycle stages
 const lifecycleStages = [
   { id: 'draft', label: 'Draft', status: 'completed' },
   { id: 'submitted', label: 'Submitted', status: 'completed' },
@@ -39,62 +39,125 @@ const lifecycleStages = [
   { id: 'q4', label: 'Q4', status: 'current' },
 ]
 
+function sheetStatusForBadge(
+  status: GoalSheetStatus | undefined
+): GoalSheetStatus {
+  if (!status) return 'draft'
+  if (status === 'submitted') return 'pending-approval'
+  return status
+}
+
 export default function EmployeeDashboard() {
-  const totalGoals = mockGoals.length
+  const {
+    profile,
+    activeCycle,
+    goals,
+    goalSheet,
+    dataSource,
+    fetchError,
+    sourceLabel,
+  } = useEmployeeGoalSheetData()
+
+  const displayName = profile.name.split(' ')[0]
   const maxGoals = 8
-  const overallAchievement = Math.round(
-    mockGoals.reduce((sum, g) => sum + (g.progress || 0), 0) / mockGoals.length
-  )
+  const totalGoals = goals.length
+  const overallAchievement =
+    goals.length > 0
+      ? Math.round(
+          goals.reduce((sum, g) => sum + (g.progress || 0), 0) / goals.length
+        )
+      : 0
   const nextCheckIn = 'Nov 30, 2025'
+  const sheetStatus = goalSheet?.status
+  const showEmptyState = dataSource === 'supabase-empty'
+
+  const welcomeMessage = showEmptyState
+    ? `No goal sheet created yet for ${activeCycle.name}. Create your goal sheet to begin.`
+    : sheetStatus === 'pending-approval' || sheetStatus === 'submitted'
+      ? 'Your goal sheet is pending manager approval.'
+      : sheetStatus === 'draft' || sheetStatus === 'returned'
+        ? 'Your goal sheet is in progress. Complete and submit when ready.'
+        : `Your goal sheet is approved. Q4 check-in is due by ${nextCheckIn}.`
 
   return (
     <DashboardLayout role="employee">
       <DashboardHeader
         title="Dashboard"
-        subtitle={`${mockGoalCycle.name} - ${mockEmployeeUser.department}`}
+        subtitle={`${activeCycle.name} - ${profile.department}`}
       />
 
       <div className="p-6 space-y-6">
-        {/* Welcome Header */}
+        <Badge
+          variant="outline"
+          className="h-5 border-border/80 px-2 text-[10px] font-normal text-muted-foreground"
+        >
+          {sourceLabel}
+        </Badge>
+
+        {fetchError && (
+          <Alert className="border-destructive/30 bg-destructive/5">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+            <AlertDescription className="text-destructive">
+              {fetchError}. Showing demo goal data.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-foreground">
-              Welcome back, {mockEmployeeUser.name.split(' ')[0]}
+              Welcome back, {displayName}
             </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your goal sheet is approved. Q4 check-in is due by {nextCheckIn}.
-            </p>
+            <p className="text-sm text-muted-foreground mt-1">{welcomeMessage}</p>
           </div>
           <div className="flex gap-2">
-            <Button asChild>
-              <Link href="/employee/quarterly-check-ins">
-                <CalendarCheck className="mr-2 h-4 w-4" />
-                Submit Q4 Check-in
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link href="/employee/my-goal-sheet">
-                <FileText className="mr-2 h-4 w-4" />
-                View Goal Sheet
-              </Link>
-            </Button>
+            {showEmptyState ? (
+              <Button asChild>
+                <Link href="/employee/create-goal-sheet">
+                  <Target className="mr-2 h-4 w-4" />
+                  Create Goal Sheet
+                </Link>
+              </Button>
+            ) : (
+              <>
+                <Button asChild>
+                  <Link href="/employee/quarterly-check-ins">
+                    <CalendarCheck className="mr-2 h-4 w-4" />
+                    Submit Q4 Check-in
+                  </Link>
+                </Button>
+                <Button variant="outline" asChild>
+                  <Link href="/employee/my-goal-sheet">
+                    <FileText className="mr-2 h-4 w-4" />
+                    View Goal Sheet
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
-        {/* KPI Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card className="border-border/60">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Active Goals</p>
-                  <p className="text-2xl font-semibold text-foreground">{totalGoals} <span className="text-sm font-normal text-muted-foreground">of max {maxGoals}</span></p>
+                  <p className="text-2xl font-semibold text-foreground">
+                    {totalGoals}{' '}
+                    <span className="text-sm font-normal text-muted-foreground">
+                      of max {maxGoals}
+                    </span>
+                  </p>
                 </div>
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                   <Target className="h-5 w-5 text-primary" />
                 </div>
               </div>
-              <Progress value={(totalGoals / maxGoals) * 100} className="h-1.5 mt-3" />
+              <Progress
+                value={maxGoals > 0 ? (totalGoals / maxGoals) * 100 : 0}
+                className="h-1.5 mt-3"
+              />
             </CardContent>
           </Card>
 
@@ -102,8 +165,12 @@ export default function EmployeeDashboard() {
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-muted-foreground">Overall Achievement</p>
-                  <p className="text-2xl font-semibold text-foreground">{overallAchievement}%</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Overall Achievement
+                  </p>
+                  <p className="text-2xl font-semibold text-foreground">
+                    {overallAchievement}%
+                  </p>
                 </div>
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
                   <TrendingUp className="h-5 w-5 text-success" />
@@ -134,19 +201,27 @@ export default function EmployeeDashboard() {
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Sheet Status</p>
                   <div className="flex items-center gap-2 mt-1">
-                    <StatusBadge status="locked" type="sheet" />
+                    <StatusBadge
+                      status={sheetStatusForBadge(sheetStatus)}
+                      type="sheet"
+                    />
                   </div>
                 </div>
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                   <Lock className="h-5 w-5 text-primary" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-3">Locked for edits</p>
+              <p className="text-xs text-muted-foreground mt-3">
+                {showEmptyState
+                  ? 'Not created yet'
+                  : sheetStatus === 'locked' || sheetStatus === 'approved'
+                    ? 'Locked for edits'
+                    : 'Current cycle sheet'}
+              </p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Goal Lifecycle Tracker */}
         <Card className="border-border/60">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">Goal Lifecycle Tracker</CardTitle>
@@ -156,16 +231,21 @@ export default function EmployeeDashboard() {
             <div className="flex items-center gap-1 overflow-x-auto pb-2">
               {lifecycleStages.map((stage, index) => (
                 <div key={stage.id} className="flex items-center">
-                  <div className={`
+                  <div
+                    className={`
                     flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap
-                    ${stage.status === 'completed' 
-                      ? 'bg-success/10 text-success' 
-                      : stage.status === 'current'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground'
+                    ${
+                      stage.status === 'completed'
+                        ? 'bg-success/10 text-success'
+                        : stage.status === 'current'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground'
                     }
-                  `}>
-                    {stage.status === 'completed' && <CheckCircle2 className="h-3 w-3" />}
+                  `}
+                  >
+                    {stage.status === 'completed' && (
+                      <CheckCircle2 className="h-3 w-3" />
+                    )}
                     {stage.status === 'current' && <Clock className="h-3 w-3" />}
                     {stage.label}
                   </div>
@@ -179,13 +259,14 @@ export default function EmployeeDashboard() {
         </Card>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* My Goals Section */}
           <div className="lg:col-span-2">
             <Card className="border-border/60">
               <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <div>
                   <CardTitle className="text-base font-semibold">My Goals</CardTitle>
-                  <CardDescription>{totalGoals} goals for {mockGoalCycle.name}</CardDescription>
+                  <CardDescription>
+                    {totalGoals} goals for {activeCycle.name}
+                  </CardDescription>
                 </div>
                 <Button variant="outline" size="sm" asChild>
                   <Link href="/employee/my-goal-sheet">
@@ -195,39 +276,60 @@ export default function EmployeeDashboard() {
                 </Button>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="divide-y divide-border">
-                  {mockGoals.map((goal) => (
-                    <div key={goal.id} className="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm font-medium text-foreground truncate">{goal.title}</p>
-                          {goal.isShared && <SharedBadge />}
-                          {goal.isLocked && <Lock className="h-3 w-3 text-muted-foreground" />}
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <span>{goal.thrustArea}</span>
-                          <span>Target: {goal.target}</span>
-                          <span>Weight: {goal.weightage}%</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-24">
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="text-muted-foreground">Progress</span>
-                            <span className="font-medium">{goal.progress || 0}%</span>
+                {showEmptyState ? (
+                  <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
+                    <Target className="h-10 w-10 text-muted-foreground mb-3" />
+                    <p className="text-sm font-medium text-foreground">
+                      No goal sheet created yet
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                      Create your {activeCycle.name} goal sheet to begin.
+                    </p>
+                    <Button className="mt-4" asChild>
+                      <Link href="/employee/create-goal-sheet">Create Goal Sheet</Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {goals.map((goal) => (
+                      <div
+                        key={goal.id}
+                        className="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-medium text-foreground truncate">
+                              {goal.title}
+                            </p>
+                            {goal.isShared && <SharedBadge />}
+                            {goal.isLocked && (
+                              <Lock className="h-3 w-3 text-muted-foreground" />
+                            )}
                           </div>
-                          <Progress value={goal.progress || 0} className="h-1.5" />
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>{goal.thrustArea}</span>
+                            <span>Target: {goal.target}</span>
+                            <span>Weight: {goal.weightage}%</span>
+                          </div>
                         </div>
-                        <StatusBadge status={goal.status} type="goal" />
+                        <div className="flex items-center gap-3">
+                          <div className="w-24">
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className="text-muted-foreground">Progress</span>
+                              <span className="font-medium">{goal.progress || 0}%</span>
+                            </div>
+                            <Progress value={goal.progress || 0} className="h-1.5" />
+                          </div>
+                          <StatusBadge status={goal.status} type="goal" />
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {/* Recent Activity */}
           <div>
             <Card className="border-border/60">
               <CardHeader className="pb-3">
@@ -238,18 +340,35 @@ export default function EmployeeDashboard() {
                 <div className="divide-y divide-border">
                   {mockActivityLogs.slice(0, 5).map((activity) => (
                     <div key={activity.id} className="flex items-start gap-3 px-6 py-3">
-                      <div className={`
+                      <div
+                        className={`
                         mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full
-                        ${activity.type === 'goal-approved' ? 'bg-success/10 text-success' :
-                          activity.type === 'goal-returned' ? 'bg-destructive/10 text-destructive' :
-                          activity.type === 'checkin-submitted' ? 'bg-primary/10 text-primary' :
-                          'bg-muted text-muted-foreground'}
-                      `}>
-                        {activity.type === 'goal-approved' && <CheckCircle2 className="h-3.5 w-3.5" />}
-                        {activity.type === 'goal-returned' && <AlertCircle className="h-3.5 w-3.5" />}
-                        {activity.type === 'checkin-submitted' && <CalendarCheck className="h-3.5 w-3.5" />}
-                        {activity.type === 'comment-added' && <FileText className="h-3.5 w-3.5" />}
-                        {activity.type === 'shared-goal-pushed' && <Share2 className="h-3.5 w-3.5" />}
+                        ${
+                          activity.type === 'goal-approved'
+                            ? 'bg-success/10 text-success'
+                            : activity.type === 'goal-returned'
+                              ? 'bg-destructive/10 text-destructive'
+                              : activity.type === 'checkin-submitted'
+                                ? 'bg-primary/10 text-primary'
+                                : 'bg-muted text-muted-foreground'
+                        }
+                      `}
+                      >
+                        {activity.type === 'goal-approved' && (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}
+                        {activity.type === 'goal-returned' && (
+                          <AlertCircle className="h-3.5 w-3.5" />
+                        )}
+                        {activity.type === 'checkin-submitted' && (
+                          <CalendarCheck className="h-3.5 w-3.5" />
+                        )}
+                        {activity.type === 'comment-added' && (
+                          <FileText className="h-3.5 w-3.5" />
+                        )}
+                        {activity.type === 'shared-goal-pushed' && (
+                          <Share2 className="h-3.5 w-3.5" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-foreground">{activity.description}</p>

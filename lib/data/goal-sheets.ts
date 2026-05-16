@@ -7,8 +7,13 @@ import { isSupabaseConfigured } from '@/lib/supabase/env'
 import {
   deleteGoalsForSheet,
   insertGoalsForSheet,
+  isRealUuid,
+  mapGoalRowToGoal,
+  mapGoalSheetRowToGoalSheet,
+  type DbGoalSheetRowWithRelations,
   type GoalSheetGoalInput,
 } from '@/lib/data/goals'
+import type { Goal, GoalSheet } from '@/lib/types'
 
 export type GoalSheetStatus =
   | 'draft'
@@ -134,6 +139,125 @@ export function validateGoalsForSubmit(goals: GoalSheetGoalInput[]): string | nu
   }
 
   return null
+}
+
+export type EmployeeGoalSheetWithGoals = {
+  goalSheet: GoalSheet
+  goals: Goal[]
+}
+
+const GOAL_SHEET_WITH_GOALS_SELECT = `
+  id,
+  employee_id,
+  manager_id,
+  cycle_id,
+  status,
+  total_weightage,
+  goals_count,
+  submitted_at,
+  approved_at,
+  returned_at,
+  locked_at,
+  approved_by,
+  manager_comment,
+  created_at,
+  updated_at,
+  goal_cycles ( name ),
+  goals (
+    id,
+    goal_sheet_id,
+    employee_id,
+    thrust_area_id,
+    title,
+    description,
+    uom_type,
+    target,
+    weightage,
+    status,
+    approval_status,
+    is_shared,
+    is_locked,
+    created_at,
+    updated_at,
+    thrust_areas ( name )
+  )
+`
+
+export async function getCurrentEmployeeGoalSheetWithGoals(params: {
+  employeeId: string
+  cycleId: string
+  employeeName?: string
+  department?: string
+  managerName?: string
+  cycleName?: string
+}): Promise<EmployeeGoalSheetWithGoals | null> {
+  if (!isSupabaseConfigured()) {
+    return null
+  }
+
+  if (!isRealUuid(params.employeeId) || !isRealUuid(params.cycleId)) {
+    return null
+  }
+
+  const supabase = createClient()
+  if (!supabase) {
+    return null
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('goal_sheets')
+      .select(GOAL_SHEET_WITH_GOALS_SELECT)
+      .eq('employee_id', params.employeeId)
+      .eq('cycle_id', params.cycleId)
+      .maybeSingle()
+
+    if (error) {
+      console.error(
+        '[getCurrentEmployeeGoalSheetWithGoals] error:',
+        error.message
+      )
+      return null
+    }
+
+    if (!data) {
+      return null
+    }
+
+    const row = data as DbGoalSheetRowWithRelations
+    const cycleName =
+      params.cycleName ?? relationNameFromRow(row.goal_cycles, 'FY Goal Cycle')
+    const employeeName = params.employeeName ?? 'Employee'
+    const department = params.department ?? '—'
+    const managerName = params.managerName ?? 'Not assigned'
+
+    const goalSheet = mapGoalSheetRowToGoalSheet(row, {
+      cycleName,
+      employeeName,
+      department,
+      managerName,
+    })
+
+    const goals = (row.goals ?? []).map((goalRow) =>
+      mapGoalRowToGoal(goalRow, { employeeName })
+    )
+
+    return { goalSheet, goals }
+  } catch (err) {
+    console.error('[getCurrentEmployeeGoalSheetWithGoals] unexpected error:', err)
+    return null
+  }
+}
+
+function relationNameFromRow(
+  relation: { name: string } | { name: string }[] | null | undefined,
+  fallback: string
+): string {
+  if (!relation) return fallback
+  if (Array.isArray(relation)) {
+    return relation[0]?.name ?? fallback
+  }
+  return relation.name
 }
 
 export async function getEmployeeGoalSheet(
