@@ -18,7 +18,7 @@ export type ProfileUpsertInput = {
   avatar_url?: string | null
 }
 
-type DbDepartment = { name: string } | null
+type DbDepartment = { name: string } | { name: string }[] | null
 
 type DbProfileRow = {
   id: string
@@ -30,6 +30,14 @@ type DbProfileRow = {
   job_title: string | null
   avatar_url: string | null
   departments: DbDepartment
+}
+
+function departmentNameFromRow(departments: DbDepartment): string | undefined {
+  if (!departments) return undefined
+  if (Array.isArray(departments)) {
+    return departments[0]?.name
+  }
+  return departments.name
 }
 
 const PROFILE_SELECT = `
@@ -50,7 +58,7 @@ export function mapProfileRowToUser(row: DbProfileRow, managerName?: string): Us
     name: row.full_name,
     email: row.email,
     role: row.role,
-    department: row.departments?.name ?? '—',
+    department: departmentNameFromRow(row.departments) ?? '—',
     avatar: row.avatar_url ?? undefined,
     managerId: row.manager_id ?? undefined,
     managerName,
@@ -129,7 +137,7 @@ export async function getCurrentProfile(): Promise<User | null> {
       return null
     }
 
-    return rowToUser(supabase, data as DbProfileRow)
+    return await rowToUser(supabase, data as DbProfileRow)
   } catch (err) {
     console.error('[getCurrentProfile] unexpected error:', err)
     return null
@@ -162,7 +170,7 @@ export async function getProfileById(profileId: string): Promise<User | null> {
       return null
     }
 
-    return rowToUser(supabase, data as DbProfileRow)
+    return await rowToUser(supabase, data as DbProfileRow)
   } catch (err) {
     console.error('[getProfileById] unexpected error:', err)
     return null

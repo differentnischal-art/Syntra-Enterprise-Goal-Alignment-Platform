@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Bell, ChevronDown, Search, UserCircle, Users, Shield } from 'lucide-react'
 
+/** `user` accepts mock users or Supabase profiles mapped via mapProfileRowToUser. */
 interface HeaderProps {
   user: User
   title?: string

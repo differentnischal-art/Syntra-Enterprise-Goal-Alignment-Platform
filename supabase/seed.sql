@@ -1,5 +1,31 @@
--- Seed reference data for AlignOS (no auth.users — create users via Supabase Auth first).
+-- Seed reference data for AlignOS.
 -- Re-run safe: uses ON CONFLICT for idempotent department / thrust_area names.
+--
+-- Profiles / auth.users:
+-- auth.users cannot be inserted safely from seed.sql (password hashing, auth schema).
+-- Create users through:
+--   1. Supabase Dashboard → Authentication → Users, or
+--   2. App sign-up on /login (when Supabase env vars are set), then
+-- Insert or update public.profiles with id = auth.users.id for each user.
+--
+-- Example profile row (commented — replace UUIDs after creating auth users):
+--
+-- insert into public.profiles (id, full_name, email, role, department_id, job_title)
+-- select
+--   '00000000-0000-0000-0000-000000000001'::uuid,
+--   'Priya Sharma',
+--   'priya.sharma@company.com',
+--   'employee',
+--   d.id,
+--   'Software Engineer'
+-- from public.departments d
+-- where d.name = 'Engineering'
+-- on conflict (id) do update set
+--   full_name = excluded.full_name,
+--   email = excluded.email,
+--   role = excluded.role,
+--   department_id = excluded.department_id,
+--   job_title = excluded.job_title;
 
 insert into public.departments (name)
 values

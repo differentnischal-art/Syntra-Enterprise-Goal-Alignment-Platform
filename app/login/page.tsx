@@ -16,16 +16,30 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
+import { signInWithEmail, signUpWithEmail } from '@/lib/data/auth'
+import { getCurrentProfile } from '@/lib/data/profiles'
+import type { UserRole } from '@/lib/types'
+
+function redirectPathForRole(role: UserRole): string {
+  if (role === 'admin') return '/admin'
+  if (role === 'manager') return '/manager'
+  return '/employee'
+}
 
 export default function LoginPage() {
   const router = useRouter()
+  const supabaseEnabled = isSupabaseConfigured()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<string>('')
   const [errors, setErrors] = useState<{ email?: string; password?: string; role?: string }>({})
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [authMessage, setAuthMessage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isSigningUp, setIsSigningUp] = useState(false)
 
-  const validateForm = () => {
+  const validateForm = (requireRole: boolean) => {
     const newErrors: { email?: string; password?: string; role?: string } = {}
 
     if (!email) {
@@ -40,7 +54,7 @@ export default function LoginPage() {
       newErrors.password = 'Password must be at least 6 characters'
     }
 
-    if (!role) {
+    if (requireRole && !role) {
       newErrors.role = 'Please select a role'
     }
 
@@ -50,31 +64,91 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setAuthError(null)
+    setAuthMessage(null)
 
-    if (!validateForm()) return
+    if (supabaseEnabled) {
+      if (!validateForm(false)) return
+
+      setIsLoading(true)
+      try {
+        const result = await signInWithEmail(email, password)
+
+        if (result.error) {
+          setAuthError(result.error)
+          return
+        }
+
+        const profile = await getCurrentProfile()
+
+        if (!profile) {
+          setAuthError(
+            'Signed in, but no profile was found. Please contact Admin/HR.'
+          )
+          return
+        }
+
+        router.push(redirectPathForRole(profile.role))
+      } finally {
+        setIsLoading(false)
+      }
+      return
+    }
+
+    if (!validateForm(true)) return
 
     setIsLoading(true)
-
-    // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 800))
+    setIsLoading(false)
 
-    // Redirect based on role
-    if (role === 'admin') {
-      router.push('/admin')
-    } else if (role === 'manager') {
-      router.push('/manager')
-    } else {
-      router.push('/employee')
-    }
+    router.push(redirectPathForRole(role as UserRole))
   }
 
   const handleQuickAccess = (selectedRole: 'employee' | 'manager' | 'admin') => {
-    if (selectedRole === 'admin') {
-      router.push('/admin')
-    } else if (selectedRole === 'manager') {
-      router.push('/manager')
-    } else {
-      router.push('/employee')
+    setAuthError(null)
+    setAuthMessage(null)
+    router.push(redirectPathForRole(selectedRole))
+  }
+
+  const handleCreateDemoAccount = async () => {
+    setAuthError(null)
+    setAuthMessage(null)
+
+    if (!supabaseEnabled) {
+      setAuthError('Supabase is not configured. Use Quick Demo Access instead.')
+      return
+    }
+
+    if (!validateForm(true)) return
+
+    setIsSigningUp(true)
+    try {
+      const fullName =
+        email.split('@')[0]?.replace(/[._]/g, ' ').trim() || 'Demo User'
+      const result = await signUpWithEmail(
+        email,
+        password,
+        fullName,
+        role as UserRole
+      )
+
+      if (result.error) {
+        setAuthError(result.error)
+        return
+      }
+
+      if (result.message) {
+        setAuthMessage(result.message)
+      }
+
+      if (result.session) {
+        const profile = await getCurrentProfile()
+        if (profile) {
+          router.push(redirectPathForRole(profile.role))
+        }
+      }
+    } finally {
+      setIsSigningUp(false)
     }
   }
 
@@ -89,7 +163,7 @@ export default function LoginPage() {
                 Back
               </Button>
             </Link>
-            <div className="w-20" /> {/* Spacer for alignment */}
+            <div className="w-20" />
           </div>
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-xl bg-primary shadow-lg">
             <Layers className="h-7 w-7 text-primary-foreground" />
@@ -102,6 +176,12 @@ export default function LoginPage() {
           </div>
         </CardHeader>
         <CardContent className="pt-4">
+          {!supabaseEnabled && (
+            <p className="mb-4 rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-center text-xs text-muted-foreground">
+              Demo mode: Supabase is not configured, using mock role navigation.
+            </p>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium">Email Address</Label>
@@ -134,7 +214,12 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="role" className="text-sm font-medium">Select Role</Label>
+              <Label htmlFor="role" className="text-sm font-medium">
+                Select Role
+                {supabaseEnabled && (
+                  <span className="font-normal text-muted-foreground"> (for demo sign-up)</span>
+                )}
+              </Label>
               <Select value={role} onValueChange={setRole}>
                 <SelectTrigger className={`h-10 ${errors.role ? 'border-destructive' : ''}`}>
                   <SelectValue placeholder="Choose your role" />
@@ -150,6 +235,13 @@ export default function LoginPage() {
               )}
             </div>
 
+            {authError && (
+              <p className="text-xs text-destructive text-center">{authError}</p>
+            )}
+            {authMessage && (
+              <p className="text-xs text-muted-foreground text-center">{authMessage}</p>
+            )}
+
             <Button
               type="submit"
               className="w-full h-10 font-medium"
@@ -157,6 +249,18 @@ export default function LoginPage() {
             >
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
+
+            {supabaseEnabled && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full h-9 text-xs text-muted-foreground"
+                disabled={isSigningUp}
+                onClick={handleCreateDemoAccount}
+              >
+                {isSigningUp ? 'Creating account...' : 'Create demo account'}
+              </Button>
+            )}
 
             <p className="text-center text-xs text-muted-foreground">
               Having trouble signing in? Contact{' '}
