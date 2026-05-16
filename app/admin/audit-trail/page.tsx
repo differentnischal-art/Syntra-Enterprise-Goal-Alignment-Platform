@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { mockAdminUser, mockAuditLogs } from '@/lib/mock-data'
 import { AuditLog } from '@/lib/types'
+import { downloadCSV, formatAuditLogsForExport } from '@/lib/export-csv'
 import { 
   ClipboardList, 
   Search, 
@@ -118,7 +119,7 @@ export default function AuditTrailPage() {
   }
 
   const handleExport = () => {
-    console.log('Exporting audit trail...')
+    downloadCSV('audit_trail.csv', formatAuditLogsForExport(filteredLogs))
   }
 
   return (

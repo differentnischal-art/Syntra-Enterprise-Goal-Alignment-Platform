@@ -35,6 +35,7 @@ import {
   Clock,
   Target
 } from 'lucide-react'
+import { downloadCSV, formatReportDataForExport } from '@/lib/export-csv'
 
 export default function ReportsExportPage() {
   const [reportData] = useState<Report[]>(mockReportData)
@@ -71,11 +72,27 @@ export default function ReportsExportPage() {
   }
 
   const handleExportCSV = (reportType: string) => {
-    console.log('Exporting CSV:', reportType)
+    if (reportType === 'achievement' || reportType === 'preview') {
+      downloadCSV('achievement_report.csv', formatReportDataForExport(filteredReports))
+    } else if (reportType === 'completion') {
+      const completionData = mockDepartmentCompletion.map(d => ({
+        Department: d.department,
+        'Total Employees': d.totalEmployees,
+        'Sheets Locked': d.sheetsLocked,
+        'Q1 (%)': d.Q1,
+        'Q2 (%)': d.Q2,
+        'Q3 (%)': d.Q3,
+        'Q4 (%)': d.Q4,
+      }))
+      downloadCSV('completion_report.csv', completionData)
+    } else if (reportType === 'scores') {
+      downloadCSV('score_analysis.csv', formatReportDataForExport(filteredReports))
+    }
   }
 
   const handleExportExcel = (reportType: string) => {
-    console.log('Exporting Excel:', reportType)
+    // For demo, Excel export uses the same CSV function
+    handleExportCSV(reportType)
   }
 
   // Calculate summary stats
