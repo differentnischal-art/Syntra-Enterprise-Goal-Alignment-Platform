@@ -160,7 +160,7 @@ export default function AdminDashboard() {
             value={activeEscalations}
             subtitle="Requires attention"
             icon={<AlertTriangle className="h-5 w-5" />}
-            variant="destructive"
+            variant="danger"
           />
         </div>
 
