@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { mockEmployeeUser, mockGoals, mockGoalSheet, mockActivityLogs, mockGoalCycle } from '@/lib/mock-data'
+import { mockGoals, mockGoalSheet, mockActivityLogs, mockGoalCycle } from '@/lib/mock-data'
 import { 
   Lock, 
   FileText, 
@@ -45,9 +45,8 @@ export default function MyGoalSheetPage() {
 
   return (
     <DashboardLayout role="employee">
-      <Header 
-        user={mockEmployeeUser} 
-        title="My Goal Sheet" 
+      <DashboardHeader
+        title="My Goal Sheet"
         subtitle={mockGoalCycle.name}
       />
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { StatusBadge } from '@/components/goals/status-badge'
-import { mockEmployeeUser, mockGoals, mockCheckIns, mockGoalCycle } from '@/lib/mock-data'
+import { mockGoals, mockCheckIns, mockGoalCycle } from '@/lib/mock-data'
 import { GoalStatus } from '@/lib/types'
 import { 
   Calendar,
@@ -99,9 +99,8 @@ export default function QuarterlyCheckInsPage() {
 
   return (
     <DashboardLayout role="employee">
-      <Header 
-        user={mockEmployeeUser} 
-        title="Quarterly Check-ins" 
+      <DashboardHeader
+        title="Quarterly Check-ins"
         subtitle={mockGoalCycle.name}
       />
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,7 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { mockAdminUser, mockEmployees, mockSharedGoals, thrustAreas } from '@/lib/mock-data'
+import { mockEmployees, mockSharedGoals, thrustAreas } from '@/lib/mock-data'
 import { SharedGoal } from '@/lib/types'
 import { Send, Share2, Lock, RefreshCw, Users, Target } from 'lucide-react'
 
@@ -100,7 +100,7 @@ export default function AdminSharedGoalsPage() {
 
   return (
     <DashboardLayout role="admin">
-      <Header user={mockAdminUser} title="Shared Goals" />
+      <DashboardHeader title="Shared Goals" />
 
       <div className="p-6 space-y-6">
         {/* Push New Shared Goal Form */}

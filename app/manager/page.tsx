@@ -2,14 +2,14 @@
 
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { StatusBadge } from '@/components/goals/status-badge'
-import { mockManagerUser, mockTeamMembers, mockTeamGoals, mockActivityLogs, mockGoalCycle } from '@/lib/mock-data'
+import { mockTeamMembers, mockTeamGoals, mockActivityLogs, mockGoalCycle } from '@/lib/mock-data'
 import { 
   Users, 
   Target, 
@@ -45,9 +45,8 @@ export default function ManagerDashboard() {
 
   return (
     <DashboardLayout role="manager">
-      <Header 
-        user={mockManagerUser} 
-        title="Manager Dashboard" 
+      <DashboardHeader
+        title="Manager Dashboard"
         subtitle="Team Performance Overview"
       />
 

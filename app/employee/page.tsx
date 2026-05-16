@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -49,9 +49,8 @@ export default function EmployeeDashboard() {
 
   return (
     <DashboardLayout role="employee">
-      <Header 
-        user={mockEmployeeUser} 
-        title="Dashboard" 
+      <DashboardHeader
+        title="Dashboard"
         subtitle={`${mockGoalCycle.name} - ${mockEmployeeUser.department}`}
       />
 

@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { mockAdminUser, mockGoalCycle } from '@/lib/mock-data'
+import { mockGoalCycle } from '@/lib/mock-data'
 import { 
   Clock, 
   Calendar, 
@@ -111,7 +111,7 @@ export default function CycleManagementPage() {
 
   return (
     <DashboardLayout role="admin">
-      <Header user={mockAdminUser} title="Cycle Management" />
+      <DashboardHeader title="Cycle Management" />
 
       <div className="p-6 space-y-6">
         {/* Active Cycle Overview */}

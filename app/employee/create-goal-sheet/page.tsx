@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { mockEmployeeUser, mockGoalCycle, thrustAreas } from '@/lib/mock-data'
+import { mockGoalCycle, thrustAreas } from '@/lib/mock-data'
 import { UnitOfMeasurement } from '@/lib/types'
 import { 
   Plus, 
@@ -105,9 +105,8 @@ export default function CreateGoalSheetPage() {
 
   return (
     <DashboardLayout role="employee">
-      <Header 
-        user={mockEmployeeUser} 
-        title="Create Goal Sheet" 
+      <DashboardHeader
+        title="Create Goal Sheet"
         subtitle={mockGoalCycle.name}
       />
 

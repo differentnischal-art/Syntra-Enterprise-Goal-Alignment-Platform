@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { SummaryCard } from '@/components/dashboard/summary-card'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { mockManagerUser, mockTeamMembers } from '@/lib/mock-data'
+import { mockTeamMembers } from '@/lib/mock-data'
 import { TeamMember } from '@/lib/types'
 import { 
   TrendingUp, 
@@ -60,7 +60,7 @@ export default function ManagerPerformancePage() {
 
   return (
     <DashboardLayout role="manager">
-      <Header user={mockManagerUser} title="Team Performance" />
+      <DashboardHeader title="Team Performance" />
 
       <div className="p-6 space-y-6">
         {/* Summary Cards */}

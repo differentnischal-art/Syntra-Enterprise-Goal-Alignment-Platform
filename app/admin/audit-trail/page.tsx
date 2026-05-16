@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { mockAdminUser, mockAuditLogs } from '@/lib/mock-data'
+import { mockAuditLogs } from '@/lib/mock-data'
 import { AuditLog } from '@/lib/types'
 import { 
   ClipboardList, 
@@ -123,7 +123,7 @@ export default function AuditTrailPage() {
 
   return (
     <DashboardLayout role="admin">
-      <Header user={mockAdminUser} title="Audit Trail" />
+      <DashboardHeader title="Audit Trail" />
 
       <div className="p-6 space-y-6">
         {/* Recent Changes Timeline */}

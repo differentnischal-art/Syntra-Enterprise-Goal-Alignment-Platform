@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { SummaryCard } from '@/components/dashboard/summary-card'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { mockAdminUser, mockEscalations } from '@/lib/mock-data'
+import { mockEscalations } from '@/lib/mock-data'
 import { Escalation, EscalationSeverity } from '@/lib/types'
 import { 
   AlertTriangle, 
@@ -106,7 +106,7 @@ export default function EscalationsPage() {
 
   return (
     <DashboardLayout role="admin">
-      <Header user={mockAdminUser} title="Escalations" />
+      <DashboardHeader title="Escalations" />
 
       <div className="p-6 space-y-6">
         {/* Summary Cards */}

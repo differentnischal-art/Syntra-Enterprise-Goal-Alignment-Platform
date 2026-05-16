@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { mockManagerUser, mockTeamMembers, mockTeamGoals, mockGoalCycle } from '@/lib/mock-data'
+import { mockTeamMembers, mockTeamGoals, mockGoalCycle } from '@/lib/mock-data'
 import { 
   CheckCircle2, 
   X,
@@ -63,9 +63,8 @@ export default function ManagerApprovalsPage() {
 
   return (
     <DashboardLayout role="manager">
-      <Header 
-        user={mockManagerUser} 
-        title="Approvals" 
+      <DashboardHeader
+        title="Approvals"
         subtitle="Review and approve team goal sheets"
       />
 

@@ -113,7 +113,11 @@ export function Header({ user, title, subtitle }: HeaderProps) {
         <div className="flex items-center gap-3 border-l border-border pl-3">
           <div className="hidden sm:block text-right">
             <p className="text-sm font-medium text-foreground">{user.name}</p>
-            <p className="text-[10px] text-muted-foreground">{user.department}</p>
+            <p className="text-[10px] text-muted-foreground">
+              {user.department && user.department !== '—'
+                ? user.department
+                : 'No department assigned'}
+            </p>
           </div>
           <Avatar className="h-8 w-8 border border-border">
             <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">

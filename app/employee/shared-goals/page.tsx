@@ -1,7 +1,7 @@
 'use client'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
@@ -32,9 +32,8 @@ export default function EmployeeSharedGoalsPage() {
 
   return (
     <DashboardLayout role="employee">
-      <Header 
-        user={mockEmployeeUser} 
-        title="Shared Goals" 
+      <DashboardHeader
+        title="Shared Goals"
         subtitle={mockGoalCycle.name}
       />
 
