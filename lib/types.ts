@@ -1,12 +1,13 @@
 export type UserRole = 'employee' | 'manager' | 'admin'
 
-export type GoalStatus = 'not-started' | 'on-track' | 'completed'
+export type GoalStatus = 'not-started' | 'on-track' | 'completed' | 'overdue'
 
-export type ApprovalStatus = 'pending' | 'approved' | 'returned'
+export type ApprovalStatus = 'draft' | 'pending' | 'approved' | 'returned'
 
 export type UnitOfMeasurement = 
   | 'numeric-higher-better' 
   | 'numeric-lower-better' 
+  | 'percentage'
   | 'timeline' 
   | 'zero-based'
 
@@ -28,6 +29,8 @@ export type EscalationType =
   | 'checkin-pending'
   | 'weightage-mismatch'
 
+export type EscalationSeverity = 'low' | 'medium' | 'high' | 'critical'
+
 export interface GoalCycle {
   id: string
   name: string
@@ -35,6 +38,13 @@ export interface GoalCycle {
   startDate: string
   endDate: string
   status: 'active' | 'closed' | 'upcoming'
+  windows: {
+    goalCreation: { start: string; end: string }
+    q1CheckIn: { start: string; end: string }
+    q2CheckIn: { start: string; end: string }
+    q3CheckIn: { start: string; end: string }
+    q4CheckIn: { start: string; end: string }
+  }
 }
 
 export interface GoalSheet {
@@ -42,6 +52,8 @@ export interface GoalSheet {
   employeeId: string
   employeeName: string
   department: string
+  managerId: string
+  managerName: string
   cycleId: string
   cycleName: string
   status: GoalSheetStatus
@@ -59,16 +71,20 @@ export interface Escalation {
   type: EscalationType
   employeeId: string
   employeeName: string
+  managerId: string
+  managerName: string
   department: string
-  severity: 'low' | 'medium' | 'high' | 'critical'
+  severity: EscalationSeverity
   message: string
+  daysOverdue: number
+  escalationLevel: 'employee' | 'manager' | 'skip-level' | 'hr'
   dueDate: string
   createdAt: string
 }
 
 export interface ActivityLog {
   id: string
-  type: 'goal-created' | 'goal-updated' | 'goal-submitted' | 'goal-approved' | 'goal-returned' | 'checkin-submitted' | 'shared-goal-pushed'
+  type: 'goal-created' | 'goal-updated' | 'goal-submitted' | 'goal-approved' | 'goal-returned' | 'checkin-submitted' | 'shared-goal-pushed' | 'comment-added'
   actorId: string
   actorName: string
   actorRole: UserRole
@@ -85,6 +101,8 @@ export interface User {
   role: UserRole
   department: string
   avatar?: string
+  managerId?: string
+  managerName?: string
 }
 
 export interface Goal {
@@ -97,20 +115,27 @@ export interface Goal {
   weightage: number
   status: GoalStatus
   approvalStatus: ApprovalStatus
+  isShared?: boolean
+  isLocked?: boolean
   createdAt: string
   updatedAt: string
   employeeId: string
   employeeName?: string
+  progress?: number
+  actualAchievement?: number
 }
 
 export interface CheckIn {
   id: string
   goalId: string
+  goalTitle: string
   quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'
   plannedTarget: number
   actualAchievement: number | null
+  unitOfMeasurement: UnitOfMeasurement
   status: GoalStatus
   score: number | null
+  managerComment?: string
   submittedAt: string | null
 }
 
@@ -120,7 +145,10 @@ export interface TeamMember {
   email: string
   department: string
   goalsCount: number
+  totalWeightage: number
+  sheetStatus: GoalSheetStatus
   approvalStatus: ApprovalStatus
+  averageAchievement: number
   checkIns: {
     Q1: boolean
     Q2: boolean
@@ -131,6 +159,7 @@ export interface TeamMember {
 
 export interface AuditLog {
   id: string
+  auditId: string
   employeeId: string
   employeeName: string
   goalId: string
@@ -139,11 +168,15 @@ export interface AuditLog {
   oldValue: string
   newValue: string
   changedBy: string
+  changedByRole: UserRole
+  actionType: 'create' | 'update' | 'delete' | 'approve' | 'return' | 'submit'
   timestamp: string
 }
 
 export interface DepartmentCompletion {
   department: string
+  totalEmployees: number
+  sheetsLocked: number
   Q1: number
   Q2: number
   Q3: number
@@ -153,7 +186,30 @@ export interface DepartmentCompletion {
 export interface SharedGoal {
   id: string
   title: string
+  description: string
+  thrustArea: string
   target: number
-  assignedEmployees: string[]
+  unitOfMeasurement: UnitOfMeasurement
+  primaryOwnerId: string
+  primaryOwnerName: string
+  linkedEmployees: { id: string; name: string; department: string }[]
+  syncedAchievement: number | null
+  status: 'active' | 'locked'
   createdAt: string
+  createdBy: string
+}
+
+export interface Report {
+  employeeId: string
+  employeeName: string
+  department: string
+  managerName: string
+  goalTitle: string
+  thrustArea: string
+  plannedTarget: number
+  actualAchievement: number | null
+  weightage: number
+  score: number | null
+  quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4'
+  status: GoalStatus
 }
