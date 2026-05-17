@@ -24,8 +24,6 @@ import {
 } from '@/components/ui/select'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import { getAuditLogs, type AuditLogRow } from '@/lib/data/audit-logs'
-import { mockAuditLogs } from '@/lib/mock-data'
-import { isSupabaseConfigured } from '@/lib/supabase/env'
 import type { UserRole } from '@/lib/types'
 import {
   ClipboardList,
@@ -81,23 +79,6 @@ function mapLiveAuditLog(row: AuditLogRow): AuditTrailEntry {
   }
 }
 
-function mapMockAuditLog(log: (typeof mockAuditLogs)[number]): AuditTrailEntry {
-  return {
-    id: log.id,
-    auditId: log.auditId,
-    actorName: log.changedBy,
-    actorRole: log.changedByRole,
-    employeeName: log.employeeName,
-    goalTitle: log.goalTitle,
-    actionType: log.actionType,
-    fieldChanged: log.fieldChanged,
-    oldValue: log.oldValue,
-    newValue: log.newValue,
-    description: `${log.changedBy} changed ${log.fieldChanged}`,
-    timestamp: log.timestamp,
-  }
-}
-
 export default function AuditTrailPage() {
   const { liveProfile } = useCurrentProfile()
   const [liveAuditLogs, setLiveAuditLogs] = useState<AuditTrailEntry[] | null>(null)
@@ -123,10 +104,7 @@ export default function AuditTrailPage() {
     }
   }, [liveProfile])
 
-  const auditLogs = isSupabaseConfigured()
-    ? liveAuditLogs ?? []
-    : mockAuditLogs.map(mapMockAuditLog)
-  const isLiveMode = isSupabaseConfigured()
+  const auditLogs = liveAuditLogs ?? []
 
   const filteredLogs = useMemo(() => {
     return auditLogs.filter((log) => {
@@ -216,7 +194,7 @@ export default function AuditTrailPage() {
       <div className="p-6 space-y-6">
         <div className="flex justify-end">
           <Badge variant="outline">
-            {isLiveMode ? 'Live Supabase audit logs' : 'Demo audit logs'}
+            Live Supabase audit logs
           </Badge>
         </div>
 

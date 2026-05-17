@@ -28,37 +28,50 @@ import {
 } from '@/components/ui/select'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import { getProfilesByRole } from '@/lib/data/profiles'
+import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
 import { getThrustAreaNames } from '@/lib/data/reference-data'
 import {
+  createSharedGoalWithAssignments,
   getSharedGoalsForProfile,
   type SharedGoalRecord,
 } from '@/lib/data/shared-goals'
-import type { User } from '@/lib/types'
+import type { GoalCycle, UnitOfMeasurement, User } from '@/lib/types'
+import { useToast } from '@/hooks/use-toast'
 import { Send, Share2, Lock, RefreshCw, Users, Target } from 'lucide-react'
 
 export default function AdminSharedGoalsPage() {
   const { liveProfile } = useCurrentProfile()
+  const { toast } = useToast()
   const [sharedGoals, setSharedGoals] = useState<SharedGoalRecord[]>([])
   const [employees, setEmployees] = useState<User[]>([])
+  const [owners, setOwners] = useState<User[]>([])
   const [thrustAreas, setThrustAreas] = useState<string[]>([])
+  const [activeCycle, setActiveCycle] = useState<GoalCycle | null>(null)
   const [sharedGoalTitle, setSharedGoalTitle] = useState('')
   const [sharedGoalDescription, setSharedGoalDescription] = useState('')
   const [sharedGoalTarget, setSharedGoalTarget] = useState('')
+  const [uomType, setUomType] = useState<UnitOfMeasurement>('numeric-higher-better')
   const [thrustArea, setThrustArea] = useState('')
   const [primaryOwner, setPrimaryOwner] = useState('')
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
+  const [isPushing, setIsPushing] = useState(false)
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
-      const [employeeRows, thrustAreaRows] = await Promise.all([
+      const [employeeRows, managerRows, adminRows, thrustAreaRows, cycle] = await Promise.all([
         getProfilesByRole('employee'),
+        getProfilesByRole('manager'),
+        getProfilesByRole('admin'),
         getThrustAreaNames(),
+        getActiveGoalCycle(),
       ])
       if (!cancelled) {
         setEmployees(employeeRows)
+        setOwners([...employeeRows, ...managerRows, ...adminRows])
         setThrustAreas(thrustAreaRows)
+        setActiveCycle(cycle)
       }
     }
 
@@ -103,21 +116,53 @@ export default function AdminSharedGoalsPage() {
     }
   }
 
-  const handlePushSharedGoal = () => {
-    console.log('Pushing shared goal:', {
+  const reloadSharedGoals = async () => {
+    if (!liveProfile) return
+    const rows = await getSharedGoalsForProfile(liveProfile)
+    setSharedGoals(rows)
+  }
+
+  const handlePushSharedGoal = async () => {
+    if (!liveProfile || !activeCycle) {
+      toast({
+        title: 'Shared KPI not created',
+        description: 'A live admin profile and active goal cycle are required.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsPushing(true)
+    const result = await createSharedGoalWithAssignments({
       title: sharedGoalTitle,
       description: sharedGoalDescription,
-      target: sharedGoalTarget,
+      target: Number(sharedGoalTarget),
+      unitOfMeasurement: uomType,
       thrustArea,
-      primaryOwner,
-      employees: selectedEmployees,
+      primaryOwnerId: primaryOwner,
+      employeeIds: selectedEmployees,
+      cycleId: activeCycle.id,
+      createdBy: liveProfile,
     })
-    setSharedGoalTitle('')
-    setSharedGoalDescription('')
-    setSharedGoalTarget('')
-    setThrustArea('')
-    setPrimaryOwner('')
-    setSelectedEmployees([])
+    setIsPushing(false)
+
+    if (result.success) {
+      toast({ title: 'Shared KPI pushed', description: 'Assignments, notifications, and audit log were created.' })
+      setSharedGoalTitle('')
+      setSharedGoalDescription('')
+      setSharedGoalTarget('')
+      setUomType('numeric-higher-better')
+      setThrustArea('')
+      setPrimaryOwner('')
+      setSelectedEmployees([])
+      await reloadSharedGoals()
+    } else {
+      toast({
+        title: 'Shared KPI failed',
+        description: result.error ?? 'Could not create shared KPI.',
+        variant: 'destructive',
+      })
+    }
   }
 
   const getStatusBadges = (goal: SharedGoalRecord) => {
@@ -205,6 +250,23 @@ export default function AdminSharedGoalsPage() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label htmlFor="uomType">UoM *</Label>
+                    <Select value={uomType} onValueChange={(value) => setUomType(value as UnitOfMeasurement)}>
+                      <SelectTrigger id="uomType">
+                        <SelectValue placeholder="Select UoM" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="numeric-higher-better">Min / Higher Better</SelectItem>
+                        <SelectItem value="numeric-lower-better">Max / Lower Better</SelectItem>
+                        <SelectItem value="percentage-higher-better">Percentage</SelectItem>
+                        <SelectItem value="zero-based">Zero Based</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
                     <Label htmlFor="target">Target *</Label>
                     <Input
                       id="target"
@@ -223,9 +285,9 @@ export default function AdminSharedGoalsPage() {
                       <SelectValue placeholder="Select primary owner" />
                     </SelectTrigger>
                     <SelectContent>
-                      {employees.map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id}>
-                          {employee.name} ({employee.department})
+                      {owners.map((owner) => (
+                        <SelectItem key={owner.id} value={owner.id}>
+                          {owner.name} ({owner.role})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -286,11 +348,13 @@ export default function AdminSharedGoalsPage() {
                   !thrustArea ||
                   !primaryOwner ||
                   selectedEmployees.length === 0 ||
-                  employees.length === 0
+                  employees.length === 0 ||
+                  !activeCycle ||
+                  isPushing
                 }
               >
                 <Send className="mr-2 h-4 w-4" />
-                Push Shared Goal
+                {isPushing ? 'Pushing...' : 'Push Shared Goal'}
               </Button>
             </div>
           </CardContent>

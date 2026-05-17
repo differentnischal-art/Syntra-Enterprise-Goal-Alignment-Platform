@@ -1,14 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { SummaryCard } from '@/components/dashboard/summary-card'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -17,293 +16,224 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useToast } from '@/hooks/use-toast'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
+import type { AuditLogRow } from '@/lib/data/audit-logs'
 import {
-  mockAuditLogs,
-  mockDepartmentCompletion,
-  mockEmployees,
-} from '@/lib/mock-data'
-import { Users, Target, FileText, Activity, Download, Send } from 'lucide-react'
+  getAdminOverview,
+  getUnlockableGoalSheets,
+  unlockGoalSheet,
+  type AdminOverview,
+} from '@/lib/data/admin'
+import {
+  AlertTriangle,
+  ClipboardList,
+  FileCheck,
+  LockOpen,
+  Shield,
+  UserCheck,
+  Users,
+} from 'lucide-react'
+
+type UnlockableSheet = Awaited<ReturnType<typeof getUnlockableGoalSheets>>[number]
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function actionLabel(action: string): string {
+  return action.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
 
 export default function AdminDashboard() {
-  const [sharedGoalTitle, setSharedGoalTitle] = useState('')
-  const [sharedGoalTarget, setSharedGoalTarget] = useState('')
-  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
+  const { liveProfile } = useCurrentProfile()
+  const { toast } = useToast()
+  const [overview, setOverview] = useState<AdminOverview | null>(null)
+  const [unlockableSheets, setUnlockableSheets] = useState<UnlockableSheet[]>([])
+  const [unlockingId, setUnlockingId] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const totalEmployees = mockEmployees.length
-  const averageCompletion =
-    mockDepartmentCompletion.reduce((sum, d) => sum + d.Q1 + d.Q2 + d.Q3 + d.Q4, 0) /
-    (mockDepartmentCompletion.length * 4)
-
-  const toggleEmployee = (employeeId: string) => {
-    setSelectedEmployees((prev) =>
-      prev.includes(employeeId)
-        ? prev.filter((id) => id !== employeeId)
-        : [...prev, employeeId]
-    )
+  const loadDashboard = async () => {
+    setIsLoading(true)
+    const [overviewResult, unlockableResult] = await Promise.all([
+      getAdminOverview(),
+      getUnlockableGoalSheets(),
+    ])
+    setOverview(overviewResult)
+    setUnlockableSheets(unlockableResult)
+    setIsLoading(false)
   }
 
-  const handlePushSharedGoal = () => {
-    console.log('Pushing shared goal:', {
-      title: sharedGoalTitle,
-      target: sharedGoalTarget,
-      employees: selectedEmployees,
-    })
-    setSharedGoalTitle('')
-    setSharedGoalTarget('')
-    setSelectedEmployees([])
+  useEffect(() => {
+    loadDashboard()
+  }, [])
+
+  const handleUnlock = async (sheet: UnlockableSheet) => {
+    if (!liveProfile) return
+    setUnlockingId(sheet.id)
+    const result = await unlockGoalSheet(sheet.id, liveProfile)
+    setUnlockingId(null)
+    if (result.success) {
+      toast({ title: 'Goal sheet unlocked', description: `${sheet.employeeName}'s sheet was returned for rework.` })
+      await loadDashboard()
+    } else {
+      toast({
+        title: 'Unlock failed',
+        description: result.error ?? 'Could not unlock the goal sheet.',
+        variant: 'destructive',
+      })
+    }
   }
 
-  const handleExportCSV = () => {
-    console.log('Exporting CSV...')
-  }
-
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
-  const getCompletionColor = (value: number) => {
-    if (value >= 80) return 'bg-success'
-    if (value >= 50) return 'bg-warning'
-    if (value > 0) return 'bg-destructive/70'
-    return 'bg-muted'
-  }
+  const recentAuditLogs: AuditLogRow[] = overview?.recentAuditLogs ?? []
 
   return (
     <DashboardLayout role="admin">
       <DashboardHeader title="Admin Dashboard" />
 
-      <div className="space-y-6 p-4 sm:p-6">
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-6 p-6">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
           <SummaryCard
-            title="Total Employees"
-            value={totalEmployees}
-            subtitle="Across all departments"
+            title="Employees"
+            value={overview?.totalEmployees ?? 0}
+            subtitle="Live employee profiles"
             icon={<Users className="h-5 w-5" />}
-            variant="default"
           />
           <SummaryCard
-            title="Active Goals"
-            value={42}
-            subtitle="This cycle"
-            icon={<Target className="h-5 w-5" />}
-            variant="default"
+            title="Managers"
+            value={overview?.managers ?? 0}
+            subtitle="Live manager profiles"
+            icon={<UserCheck className="h-5 w-5" />}
           />
           <SummaryCard
-            title="Avg Completion"
-            value={`${Math.round(averageCompletion)}%`}
-            subtitle="Check-in rate"
-            icon={<Activity className="h-5 w-5" />}
+            title="Submitted"
+            value={overview?.submittedGoalSheets ?? 0}
+            subtitle="Submitted or beyond"
+            icon={<ClipboardList className="h-5 w-5" />}
+          />
+          <SummaryCard
+            title="Pending"
+            value={overview?.pendingApprovals ?? 0}
+            subtitle="Awaiting approval"
+            icon={<AlertTriangle className="h-5 w-5" />}
+            variant="warning"
+          />
+          <SummaryCard
+            title="Approved/Locked"
+            value={overview?.approvedOrLockedGoalSheets ?? 0}
+            subtitle="Completed reviews"
+            icon={<FileCheck className="h-5 w-5" />}
             variant="success"
           />
           <SummaryCard
-            title="Audit Entries"
-            value={mockAuditLogs.length}
-            subtitle="Last 30 days"
-            icon={<FileText className="h-5 w-5" />}
-            variant="default"
+            title="Escalations"
+            value={overview?.activeEscalations ?? 0}
+            subtitle="Computed live"
+            icon={<Shield className="h-5 w-5" />}
+            variant="danger"
           />
         </div>
 
-        {/* Department Completion Heatmap */}
-        <Card className="border-border/60 bg-card/90">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">
-              Department Check-in Completion Rates
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr>
-                    <th className="text-left text-sm font-medium text-muted-foreground pb-3 pr-4">
-                      Department
-                    </th>
-                    <th className="text-center text-sm font-medium text-muted-foreground pb-3 px-2 w-20">
-                      Q1
-                    </th>
-                    <th className="text-center text-sm font-medium text-muted-foreground pb-3 px-2 w-20">
-                      Q2
-                    </th>
-                    <th className="text-center text-sm font-medium text-muted-foreground pb-3 px-2 w-20">
-                      Q3
-                    </th>
-                    <th className="text-center text-sm font-medium text-muted-foreground pb-3 px-2 w-20">
-                      Q4
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockDepartmentCompletion.map((dept) => (
-                    <tr key={dept.department} className="border-t border-border transition-colors hover:bg-primary/5">
-                      <td className="py-3 pr-4 text-sm font-medium">{dept.department}</td>
-                      {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => (
-                        <td key={quarter} className="py-3 px-2">
-                          <div
-                            className={`mx-auto flex h-10 w-16 items-center justify-center rounded-md text-sm font-semibold shadow-sm transition-transform hover:scale-105 ${getCompletionColor(
-                              dept[quarter]
-                            )} ${dept[quarter] >= 50 ? 'text-white' : 'text-foreground'}`}
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Card className="border-border/60">
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg font-semibold">Goal Unlock / Exceptions</CardTitle>
+                <CardDescription>Unlock approved or locked sheets for admin-approved rework.</CardDescription>
+              </div>
+              <Badge variant="outline">Live Supabase</Badge>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Weightage</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {unlockableSheets.map((sheet) => (
+                      <TableRow key={sheet.id}>
+                        <TableCell>
+                          <p className="font-medium">{sheet.employeeName}</p>
+                          <p className="text-xs text-muted-foreground">{sheet.department}</p>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{sheet.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">{sheet.totalWeightage}%</TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleUnlock(sheet)}
+                            disabled={unlockingId === sheet.id}
                           >
-                            {dept[quarter]}%
-                          </div>
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="h-3 w-3 rounded bg-success" />
-                80%+
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-3 w-3 rounded bg-warning" />
-                50-79%
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-3 w-3 rounded bg-destructive/70" />
-                1-49%
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-3 w-3 rounded bg-muted border border-border" />
-                Not Started
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Audit Log */}
-        <Card className="border-border/60 bg-card/90">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg font-semibold">Audit Log</CardTitle>
-            <Button variant="outline" size="sm" onClick={handleExportCSV}>
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="min-w-[100px]">Employee</TableHead>
-                    <TableHead className="min-w-[120px]">Goal Title</TableHead>
-                    <TableHead className="w-[90px]">Field</TableHead>
-                    <TableHead className="w-[80px] hidden md:table-cell">Old Value</TableHead>
-                    <TableHead className="w-[80px] hidden md:table-cell">New Value</TableHead>
-                    <TableHead className="w-[90px] hidden lg:table-cell">Changed By</TableHead>
-                    <TableHead className="w-[120px]">Timestamp</TableHead>
-                  </TableRow>
-                </TableHeader>
-              <TableBody>
-                {mockAuditLogs.map((log, index) => (
-                  <TableRow
-                    key={log.id}
-                    className={index % 2 === 0 ? 'bg-card hover:bg-primary/5' : 'bg-muted/25 hover:bg-primary/5'}
-                  >
-                    <TableCell className="font-medium">{log.employeeName}</TableCell>
-                    <TableCell className="max-w-[150px]">
-                      <span className="line-clamp-1" title={log.goalTitle}>{log.goalTitle}</span>
-                    </TableCell>
-                    <TableCell>{log.fieldChanged}</TableCell>
-                    <TableCell className="text-muted-foreground hidden md:table-cell">{log.oldValue}</TableCell>
-                    <TableCell className="hidden md:table-cell">{log.newValue}</TableCell>
-                    <TableCell className="text-muted-foreground hidden lg:table-cell">{log.changedBy}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {formatTimestamp(log.timestamp)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Shared Goal Push Form */}
-        <Card className="border-border/60 bg-card/90">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">Push Shared Goal</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="kpiTitle">KPI Title</Label>
-                  <Input
-                    id="kpiTitle"
-                    placeholder="e.g., Complete compliance training"
-                    value={sharedGoalTitle}
-                    onChange={(e) => setSharedGoalTitle(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="target">Target</Label>
-                  <Input
-                    id="target"
-                    type="number"
-                    placeholder="e.g., 100"
-                    value={sharedGoalTarget}
-                    onChange={(e) => setSharedGoalTarget(e.target.value)}
-                  />
-                </div>
+                            <LockOpen className="mr-2 h-4 w-4" />
+                            Unlock
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
-
-              <div className="space-y-2">
-                <Label>Select Employees</Label>
-                <div className="max-h-[180px] space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-background/60 p-3 shadow-inner">
-                  {mockEmployees.map((employee) => (
-                    <div
-                      key={employee.id}
-                      className="flex items-center space-x-2 rounded-md px-2 py-1.5 transition-colors hover:bg-primary/5"
-                    >
-                      <Checkbox
-                        id={employee.id}
-                        checked={selectedEmployees.includes(employee.id)}
-                        onCheckedChange={() => toggleEmployee(employee.id)}
-                      />
-                      <label
-                        htmlFor={employee.id}
-                        className="flex-1 cursor-pointer text-sm"
-                      >
-                        {employee.name}
-                        <span className="ml-2 text-muted-foreground">
-                          ({employee.department})
-                        </span>
-                      </label>
-                    </div>
-                  ))}
+              {!isLoading && unlockableSheets.length === 0 && (
+                <div className="py-10 text-center">
+                  <LockOpen className="mx-auto mb-3 h-10 w-10 text-primary" />
+                  <p className="font-medium">No approved or locked goal sheets found.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Exception handling actions will appear once goal sheets are approved.
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {selectedEmployees.length} employee(s) selected
-                </p>
-              </div>
-            </div>
+              )}
+            </CardContent>
+          </Card>
 
-            <div className="mt-6 flex justify-end">
-              <Button
-                onClick={handlePushSharedGoal}
-                disabled={
-                  !sharedGoalTitle.trim() ||
-                  !sharedGoalTarget ||
-                  selectedEmployees.length === 0
-                }
-              >
-                <Send className="mr-2 h-4 w-4" />
-                Push Goal
+          <Card className="border-border/60">
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-lg font-semibold">Recent Audit Trail</CardTitle>
+                <CardDescription>Latest organization lifecycle events.</CardDescription>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/admin/audit-trail">View All</Link>
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {recentAuditLogs.map((log) => (
+                  <div key={log.id} className="rounded-lg border border-border bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-medium">{actionLabel(log.actionType)}</p>
+                      <span className="text-xs text-muted-foreground">{formatDate(log.createdAt)}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {log.description ?? `${log.actorName} updated ${log.goalTitle}`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {!isLoading && recentAuditLogs.length === 0 && (
+                <div className="py-10 text-center">
+                  <ClipboardList className="mx-auto mb-3 h-10 w-10 text-primary" />
+                  <p className="font-medium">No audit activity yet.</p>
+                  <p className="text-sm text-muted-foreground">
+                    Lifecycle actions will appear here once users submit or update records.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </DashboardLayout>
   )

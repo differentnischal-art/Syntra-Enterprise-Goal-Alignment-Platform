@@ -1,11 +1,19 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import * as XLSX from 'xlsx'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Table,
@@ -15,199 +23,238 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
+import { createAuditLog } from '@/lib/data/audit-logs'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { mockReportData, mockDepartmentCompletion } from '@/lib/mock-data'
-import { Report } from '@/lib/types'
-import { 
-  Download, 
-  FileSpreadsheet, 
-  FileText, 
-  BarChart3,
-  PieChart,
-  TrendingUp,
-  CheckCircle2,
-  Clock,
-  Target
-} from 'lucide-react'
+  getAdminReports,
+  type AdminAchievementReportRow,
+  type AdminCompletionReportRow,
+} from '@/lib/data/admin'
+import { Download, FileSpreadsheet, FileText, Target, TrendingUp } from 'lucide-react'
+
+function escapeCsv(value: unknown): string {
+  const text = value == null ? '' : String(value)
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
+
+function downloadBlob(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function statusBadge(status: string) {
+  if (status === 'completed') return <Badge className="bg-success/10 text-success">Completed</Badge>
+  if (status === 'on-track') return <Badge className="bg-primary/10 text-primary">On Track</Badge>
+  if (status === 'overdue') return <Badge className="bg-destructive/10 text-destructive">Overdue</Badge>
+  return <Badge variant="secondary">Not Started</Badge>
+}
+
+function scoreClass(score: number | null) {
+  if (score == null) return 'text-muted-foreground'
+  if (score >= 100) return 'font-semibold text-success'
+  if (score >= 70) return 'text-primary'
+  if (score >= 50) return 'text-warning-foreground'
+  return 'text-destructive'
+}
 
 export default function ReportsExportPage() {
-  const [reportData] = useState<Report[]>(mockReportData)
-  const [quarterFilter, setQuarterFilter] = useState<string>('Q3')
-  const [departmentFilter, setDepartmentFilter] = useState<string>('all')
+  const { liveProfile } = useCurrentProfile()
+  const [achievementRows, setAchievementRows] = useState<AdminAchievementReportRow[]>([])
+  const [completionRows, setCompletionRows] = useState<AdminCompletionReportRow[]>([])
+  const [departments, setDepartments] = useState<string[]>([])
+  const [quarterFilter, setQuarterFilter] = useState('all')
+  const [departmentFilter, setDepartmentFilter] = useState('all')
+  const [isLoading, setIsLoading] = useState(true)
 
-  const filteredReports = reportData.filter((report) => {
-    const matchesQuarter = quarterFilter === 'all' || report.quarter === quarterFilter
-    const matchesDepartment = departmentFilter === 'all' || report.department === departmentFilter
-    return matchesQuarter && matchesDepartment
-  })
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <Badge className="bg-success/10 text-success">Completed</Badge>
-      case 'on-track':
-        return <Badge className="bg-primary/10 text-primary">On Track</Badge>
-      case 'overdue':
-        return <Badge className="bg-destructive/10 text-destructive">Overdue</Badge>
-      case 'not-started':
-        return <Badge variant="secondary">Not Started</Badge>
-      default:
-        return <Badge variant="secondary">{status}</Badge>
+  useEffect(() => {
+    let cancelled = false
+    setIsLoading(true)
+    getAdminReports().then((result) => {
+      if (!cancelled) {
+        setAchievementRows(result.achievementRows)
+        setCompletionRows(result.completionRows)
+        setDepartments(result.departments)
+        setIsLoading(false)
+      }
+    })
+    return () => {
+      cancelled = true
     }
+  }, [])
+
+  const filteredAchievementRows = useMemo(() => {
+    return achievementRows.filter((row) => {
+      const quarterMatch = quarterFilter === 'all' || row.quarter === quarterFilter
+      const departmentMatch = departmentFilter === 'all' || row.department === departmentFilter
+      return quarterMatch && departmentMatch
+    })
+  }, [achievementRows, departmentFilter, quarterFilter])
+
+  const filteredCompletionRows = useMemo(() => {
+    return completionRows.filter((row) => {
+      const quarterMatch = quarterFilter === 'all' || row.quarter === quarterFilter
+      const departmentMatch = departmentFilter === 'all' || row.department === departmentFilter
+      return quarterMatch && departmentMatch
+    })
+  }, [completionRows, departmentFilter, quarterFilter])
+
+  const scoredRows = filteredAchievementRows.filter((row) => row.score != null)
+  const avgScore =
+    scoredRows.length > 0
+      ? Math.round(scoredRows.reduce((sum, row) => sum + (row.score ?? 0), 0) / scoredRows.length)
+      : null
+  const submittedCheckIns = filteredCompletionRows.filter(
+    (row) => row.checkInStatus === 'Submitted'
+  ).length
+
+  async function logExport(type: string) {
+    if (!liveProfile) return
+    await createAuditLog({
+      actorId: liveProfile.id,
+      actorRole: 'admin',
+      actionType: 'report_exported',
+      fieldChanged: type,
+      newValue: `${quarterFilter}/${departmentFilter}`,
+      description: `Admin exported ${type} report.`,
+    })
   }
 
-  const getScoreColor = (score: number | null) => {
-    if (score === null) return 'text-muted-foreground'
-    if (score >= 100) return 'text-success font-semibold'
-    if (score >= 70) return 'text-primary'
-    if (score >= 50) return 'text-warning-foreground'
-    return 'text-destructive'
+  const achievementHeaders = [
+    'Employee',
+    'Department',
+    'Manager',
+    'Goal',
+    'Planned Target',
+    'Actual Achievement',
+    'Weightage',
+    'Score',
+    'Quarter',
+    'Status',
+  ]
+  const completionHeaders = [
+    'Employee',
+    'Department',
+    'Manager',
+    'Quarter',
+    'Check-in Status',
+    'Submitted Date',
+    'Manager Comment Status',
+  ]
+
+  async function exportCsv(reportType: 'achievement' | 'completion') {
+    const rows =
+      reportType === 'achievement'
+        ? filteredAchievementRows.map((row) => [
+            row.employeeName,
+            row.department,
+            row.managerName,
+            row.goalTitle,
+            row.plannedTarget,
+            row.actualAchievement ?? '',
+            `${row.weightage}%`,
+            row.score == null ? '' : `${row.score}%`,
+            row.quarter,
+            row.status,
+          ])
+        : filteredCompletionRows.map((row) => [
+            row.employeeName,
+            row.department,
+            row.managerName,
+            row.quarter,
+            row.checkInStatus,
+            row.submittedDate ?? '',
+            row.managerCommentStatus,
+          ])
+    const headers = reportType === 'achievement' ? achievementHeaders : completionHeaders
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n')
+    downloadBlob(`${reportType}-report.csv`, csv, 'text/csv;charset=utf-8')
+    await logExport(`${reportType}_csv`)
   }
 
-  const handleExportCSV = (reportType: string) => {
-    console.log('Exporting CSV:', reportType)
-  }
+  async function exportExcel(reportType: 'achievement' | 'completion') {
+    const headers = reportType === 'achievement' ? achievementHeaders : completionHeaders
+    const rows =
+      reportType === 'achievement'
+        ? filteredAchievementRows.map((row) => [
+            row.employeeName,
+            row.department,
+            row.managerName,
+            row.goalTitle,
+            row.plannedTarget,
+            row.actualAchievement ?? '',
+            `${row.weightage}%`,
+            row.score == null ? '' : `${row.score}%`,
+            row.quarter,
+            row.status,
+          ])
+        : filteredCompletionRows.map((row) => [
+            row.employeeName,
+            row.department,
+            row.managerName,
+            row.quarter,
+            row.checkInStatus,
+            row.submittedDate ?? '',
+            row.managerCommentStatus,
+          ])
 
-  const handleExportExcel = (reportType: string) => {
-    console.log('Exporting Excel:', reportType)
+    const workbook = XLSX.utils.book_new()
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    XLSX.utils.book_append_sheet(workbook, worksheet, reportType)
+    XLSX.writeFile(workbook, `${reportType}-report.xlsx`)
+    await logExport(`${reportType}_excel`)
   }
-
-  // Calculate summary stats
-  const avgScore = filteredReports.filter(r => r.score !== null).reduce((sum, r) => sum + (r.score || 0), 0) / 
-    filteredReports.filter(r => r.score !== null).length || 0
-  const completedCount = filteredReports.filter(r => r.status === 'completed').length
-  const totalGoals = filteredReports.length
 
   return (
     <DashboardLayout role="admin">
       <DashboardHeader title="Reports & Export" />
 
-      <div className="p-6 space-y-6">
-        {/* Report Type Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                  <TrendingUp className="h-6 w-6 text-primary" />
-                </div>
-                <Badge variant="outline">Most Used</Badge>
-              </div>
-              <h3 className="font-semibold mb-1">Achievement Report</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Planned vs actual achievement across all employees
-              </p>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1"
-                  onClick={() => handleExportCSV('achievement')}
-                >
-                  <FileText className="mr-1 h-4 w-4" />
-                  CSV
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1"
-                  onClick={() => handleExportExcel('achievement')}
-                >
-                  <FileSpreadsheet className="mr-1 h-4 w-4" />
-                  Excel
-                </Button>
-              </div>
+      <div className="space-y-6 p-6">
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="border-border/60">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Report Rows</p>
+              <p className="mt-1 text-2xl font-semibold">{filteredAchievementRows.length}</p>
             </CardContent>
           </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-success/10">
-                  <PieChart className="h-6 w-6 text-success" />
-                </div>
-              </div>
-              <h3 className="font-semibold mb-1">Completion Dashboard</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Department-wise check-in completion rates
-              </p>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1"
-                  onClick={() => handleExportCSV('completion')}
-                >
-                  <FileText className="mr-1 h-4 w-4" />
-                  CSV
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1"
-                  onClick={() => handleExportExcel('completion')}
-                >
-                  <FileSpreadsheet className="mr-1 h-4 w-4" />
-                  Excel
-                </Button>
-              </div>
+          <Card className="border-border/60">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Submitted Check-ins</p>
+              <p className="mt-1 text-2xl font-semibold text-success">{submittedCheckIns}</p>
             </CardContent>
           </Card>
-
-          <Card className="shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-            <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-warning/10">
-                  <BarChart3 className="h-6 w-6 text-warning-foreground" />
-                </div>
-              </div>
-              <h3 className="font-semibold mb-1">Score Analysis</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Weighted scores and performance distribution
+          <Card className="border-border/60">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Avg Score</p>
+              <p className={`mt-1 text-2xl font-semibold ${scoreClass(avgScore)}`}>
+                {avgScore == null ? '-' : `${avgScore}%`}
               </p>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1"
-                  onClick={() => handleExportCSV('scores')}
-                >
-                  <FileText className="mr-1 h-4 w-4" />
-                  CSV
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1"
-                  onClick={() => handleExportExcel('scores')}
-                >
-                  <FileSpreadsheet className="mr-1 h-4 w-4" />
-                  Excel
-                </Button>
-              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-border/60">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Departments</p>
+              <p className="mt-1 text-2xl font-semibold">{departments.length}</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Report Preview */}
-        <Card className="shadow-sm">
+        <Card className="border-border/60">
           <CardHeader>
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <CardTitle className="text-lg font-semibold">Report Preview</CardTitle>
+                <CardTitle className="text-lg font-semibold">Live Report Preview</CardTitle>
                 <CardDescription>
-                  Preview data before exporting
+                  Built from Supabase profiles, goal sheets, goals, and check-ins.
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <Select value={quarterFilter} onValueChange={setQuarterFilter}>
-                  <SelectTrigger className="w-[120px]">
+                  <SelectTrigger className="w-[140px]">
                     <SelectValue placeholder="Quarter" />
                   </SelectTrigger>
                   <SelectContent>
@@ -219,177 +266,117 @@ export default function ReportsExportPage() {
                   </SelectContent>
                 </Select>
                 <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                  <SelectTrigger className="w-[150px]">
+                  <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Department" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Departments</SelectItem>
-                    <SelectItem value="Engineering">Engineering</SelectItem>
-                    <SelectItem value="Product">Product</SelectItem>
-                    <SelectItem value="Sales">Sales</SelectItem>
-                    <SelectItem value="Customer Success">Customer Success</SelectItem>
+                    {departments.map((department) => (
+                      <SelectItem key={department} value={department}>
+                        {department}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
-                <Button onClick={() => handleExportCSV('preview')}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export
-                </Button>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            {/* Summary Stats */}
-            <div className="grid gap-4 md:grid-cols-4 mb-6">
-              <div className="rounded-lg border border-border bg-muted/30 p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <Target className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Total Goals</span>
+            <Tabs defaultValue="achievement">
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <TabsList>
+                  <TabsTrigger value="achievement">Achievement Report</TabsTrigger>
+                  <TabsTrigger value="completion">Completion Report</TabsTrigger>
+                </TabsList>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => exportCsv('achievement')}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Achievement CSV
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => exportExcel('achievement')}>
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    Achievement Excel
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => exportCsv('completion')}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Completion CSV
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => exportExcel('completion')}>
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    Completion Excel
+                  </Button>
                 </div>
-                <p className="text-2xl font-semibold">{totalGoals}</p>
               </div>
-              <div className="rounded-lg border border-border bg-muted/30 p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle2 className="h-4 w-4 text-success" />
-                  <span className="text-xs text-muted-foreground">Completed</span>
-                </div>
-                <p className="text-2xl font-semibold text-success">{completedCount}</p>
-              </div>
-              <div className="rounded-lg border border-border bg-muted/30 p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <Clock className="h-4 w-4 text-primary" />
-                  <span className="text-xs text-muted-foreground">In Progress</span>
-                </div>
-                <p className="text-2xl font-semibold text-primary">{totalGoals - completedCount}</p>
-              </div>
-              <div className="rounded-lg border border-border bg-muted/30 p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Avg Score</span>
-                </div>
-                <p className={`text-2xl font-semibold ${getScoreColor(avgScore)}`}>
-                  {Math.round(avgScore)}%
-                </p>
-              </div>
-            </div>
-
-            {/* Data Table */}
-            <Tabs defaultValue="achievement" className="w-full">
-              <TabsList className="mb-4">
-                <TabsTrigger value="achievement">Achievement Report</TabsTrigger>
-                <TabsTrigger value="completion">Completion Report</TabsTrigger>
-              </TabsList>
 
               <TabsContent value="achievement">
-                <div className="rounded-lg border border-border overflow-hidden">
+                <div className="overflow-x-auto rounded-lg border border-border">
                   <Table>
                     <TableHeader>
-                      <TableRow className="hover:bg-transparent bg-muted/50">
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Department</TableHead>
-                        <TableHead>Manager</TableHead>
-                        <TableHead>Goal</TableHead>
-                        <TableHead className="text-right">Planned</TableHead>
-                        <TableHead className="text-right">Actual</TableHead>
-                        <TableHead className="text-right">Weightage</TableHead>
-                        <TableHead className="text-right">Score</TableHead>
-                        <TableHead className="text-center">Quarter</TableHead>
-                        <TableHead>Status</TableHead>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        {achievementHeaders.map((header) => (
+                          <TableHead key={header} className="whitespace-nowrap">
+                            {header}
+                          </TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredReports.map((report, index) => (
-                        <TableRow
-                          key={`${report.employeeId}-${report.goalTitle}-${index}`}
-                          className={index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}
-                        >
-                          <TableCell className="font-medium">
-                            {report.employeeName}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {report.department}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {report.managerName}
-                          </TableCell>
-                          <TableCell className="max-w-[200px]">
-                            <span className="line-clamp-1" title={report.goalTitle}>
-                              {report.goalTitle}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {report.plannedTarget}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {report.actualAchievement ?? '-'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {report.weightage}%
-                          </TableCell>
-                          <TableCell className={`text-right ${getScoreColor(report.score)}`}>
-                            {report.score !== null ? `${report.score}%` : '-'}
+                      {filteredAchievementRows.map((row, index) => (
+                        <TableRow key={row.id} className={index % 2 === 0 ? 'bg-card' : 'bg-muted/25'}>
+                          <TableCell className="font-medium">{row.employeeName}</TableCell>
+                          <TableCell>{row.department}</TableCell>
+                          <TableCell>{row.managerName}</TableCell>
+                          <TableCell className="min-w-[220px]">{row.goalTitle}</TableCell>
+                          <TableCell className="text-right">{row.plannedTarget}</TableCell>
+                          <TableCell className="text-right">{row.actualAchievement ?? '-'}</TableCell>
+                          <TableCell className="text-right">{row.weightage}%</TableCell>
+                          <TableCell className={`text-right ${scoreClass(row.score)}`}>
+                            {row.score == null ? '-' : `${row.score}%`}
                           </TableCell>
                           <TableCell className="text-center">
-                            <Badge variant="outline">{report.quarter}</Badge>
+                            <Badge variant="outline">{row.quarter}</Badge>
                           </TableCell>
-                          <TableCell>
-                            {getStatusBadge(report.status)}
-                          </TableCell>
+                          <TableCell>{statusBadge(row.status)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </div>
+                {!isLoading && filteredAchievementRows.length === 0 && (
+                  <div className="py-12 text-center">
+                    <Target className="mx-auto mb-3 h-10 w-10 text-primary" />
+                    <p className="font-medium">No live data found yet.</p>
+                    <p className="text-sm text-muted-foreground">
+                      Create employee goals/check-ins to populate this report.
+                    </p>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="completion">
-                <div className="rounded-lg border border-border overflow-hidden">
+                <div className="overflow-x-auto rounded-lg border border-border">
                   <Table>
                     <TableHeader>
-                      <TableRow className="hover:bg-transparent bg-muted/50">
-                        <TableHead>Department</TableHead>
-                        <TableHead className="text-right">Employees</TableHead>
-                        <TableHead className="text-right">Sheets Locked</TableHead>
-                        <TableHead className="text-center">Q1</TableHead>
-                        <TableHead className="text-center">Q2</TableHead>
-                        <TableHead className="text-center">Q3</TableHead>
-                        <TableHead className="text-center">Q4</TableHead>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        {completionHeaders.map((header) => (
+                          <TableHead key={header} className="whitespace-nowrap">
+                            {header}
+                          </TableHead>
+                        ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {mockDepartmentCompletion.map((dept, index) => (
-                        <TableRow
-                          key={dept.department}
-                          className={index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}
-                        >
-                          <TableCell className="font-medium">
-                            {dept.department}
+                      {filteredCompletionRows.map((row, index) => (
+                        <TableRow key={row.id} className={index % 2 === 0 ? 'bg-card' : 'bg-muted/25'}>
+                          <TableCell className="font-medium">{row.employeeName}</TableCell>
+                          <TableCell>{row.department}</TableCell>
+                          <TableCell>{row.managerName}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{row.quarter}</Badge>
                           </TableCell>
-                          <TableCell className="text-right">
-                            {dept.totalEmployees}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {dept.sheetsLocked}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className={dept.Q1 >= 80 ? 'text-success font-medium' : dept.Q1 >= 50 ? 'text-warning-foreground' : 'text-destructive'}>
-                              {dept.Q1}%
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className={dept.Q2 >= 80 ? 'text-success font-medium' : dept.Q2 >= 50 ? 'text-warning-foreground' : 'text-destructive'}>
-                              {dept.Q2}%
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className={dept.Q3 >= 80 ? 'text-success font-medium' : dept.Q3 >= 50 ? 'text-warning-foreground' : 'text-destructive'}>
-                              {dept.Q3}%
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-center">
-                            <span className="text-muted-foreground">
-                              {dept.Q4}%
-                            </span>
-                          </TableCell>
+                          <TableCell>{row.checkInStatus}</TableCell>
+                          <TableCell>{row.submittedDate ? new Date(row.submittedDate).toLocaleDateString('en-IN') : '-'}</TableCell>
+                          <TableCell>{row.managerCommentStatus}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -398,9 +385,9 @@ export default function ReportsExportPage() {
               </TabsContent>
             </Tabs>
 
-            <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-              <span>Showing {filteredReports.length} records</span>
-              <span>Data as of {new Date().toLocaleDateString('en-IN')}</span>
+            <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <TrendingUp className="h-4 w-4" />
+              Showing live rows for the selected filters.
             </div>
           </CardContent>
         </Card>

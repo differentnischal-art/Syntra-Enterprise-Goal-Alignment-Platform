@@ -1,327 +1,244 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { mockGoalCycle } from '@/lib/mock-data'
-import { 
-  Clock, 
-  Calendar, 
-  CalendarCheck, 
-  Lock, 
-  Bell, 
-  PlayCircle, 
-  StopCircle,
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useToast } from '@/hooks/use-toast'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
+import {
+  getAdminCycle,
+  updateCycleWindowStatus,
+  type AdminCycle,
+  type AdminCycleWindow,
+} from '@/lib/data/admin'
+import {
+  Calendar,
+  CalendarCheck,
   CheckCircle2,
-  AlertCircle,
-  Target
+  Clock,
+  PlayCircle,
+  StopCircle,
+  Target,
 } from 'lucide-react'
 
-const cycleWindows = [
-  {
-    id: 'goal-creation',
-    name: 'Goal Creation Window',
-    description: 'Employees create and submit goal sheets for manager approval',
-    start: '1 May 2025',
-    end: '31 May 2025',
-    status: 'completed' as const,
-    icon: Target,
-  },
-  {
-    id: 'q1-checkin',
-    name: 'Q1 Check-in',
-    description: 'First quarterly review - July performance assessment',
-    start: '1 Jul 2025',
-    end: '15 Jul 2025',
-    status: 'completed' as const,
-    icon: CalendarCheck,
-  },
-  {
-    id: 'q2-checkin',
-    name: 'Q2 Check-in',
-    description: 'Second quarterly review - October performance assessment',
-    start: '1 Oct 2025',
-    end: '15 Oct 2025',
-    status: 'active' as const,
-    icon: CalendarCheck,
-  },
-  {
-    id: 'q3-checkin',
-    name: 'Q3 Check-in',
-    description: 'Third quarterly review - January performance assessment',
-    start: '1 Jan 2026',
-    end: '15 Jan 2026',
-    status: 'upcoming' as const,
-    icon: CalendarCheck,
-  },
-  {
-    id: 'q4-annual',
-    name: 'Q4 / Annual Review',
-    description: 'Final quarterly review and annual performance closure',
-    start: '15 Mar 2026',
-    end: '31 Mar 2026',
-    status: 'upcoming' as const,
-    icon: CheckCircle2,
-  },
-]
+function formatDate(value: string | null): string {
+  if (!value) return '-'
+  return new Date(`${value}T00:00:00`).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function windowIcon(window: AdminCycleWindow) {
+  if (window.type === 'goal_creation') return Target
+  if (window.quarter === 'q4') return CheckCircle2
+  return CalendarCheck
+}
+
+function statusBadge(status: AdminCycleWindow['status']) {
+  if (status === 'active') {
+    return <Badge className="border-success/20 bg-success/10 text-success">Active</Badge>
+  }
+  if (status === 'completed') {
+    return <Badge variant="secondary" className="bg-muted text-muted-foreground">Completed</Badge>
+  }
+  return <Badge variant="outline" className="text-muted-foreground">Upcoming</Badge>
+}
 
 export default function CycleManagementPage() {
-  const [selectedWindow, setSelectedWindow] = useState<string | null>(null)
+  const { liveProfile } = useCurrentProfile()
+  const { toast } = useToast()
+  const [cycle, setCycle] = useState<AdminCycle | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [updatingWindowId, setUpdatingWindowId] = useState<string | null>(null)
 
-  const getStatusBadge = (status: 'completed' | 'active' | 'upcoming') => {
-    switch (status) {
-      case 'completed':
-        return <Badge variant="secondary" className="bg-muted text-muted-foreground">Completed</Badge>
-      case 'active':
-        return <Badge className="bg-success/10 text-success border-success/20">Active</Badge>
-      case 'upcoming':
-        return <Badge variant="outline" className="text-muted-foreground">Upcoming</Badge>
+  const loadCycle = async () => {
+    setIsLoading(true)
+    const result = await getAdminCycle()
+    setCycle(result)
+    setIsLoading(false)
+  }
+
+  useEffect(() => {
+    loadCycle()
+  }, [])
+
+  const activeWindow = cycle?.windows.find((window) => window.status === 'active')
+  const daysRemaining = cycle
+    ? Math.max(
+        0,
+        Math.ceil((new Date(`${cycle.endDate}T00:00:00`).getTime() - Date.now()) / 86_400_000)
+      )
+    : 0
+
+  const handleToggleWindow = async (window: AdminCycleWindow, isOpen: boolean) => {
+    if (!liveProfile) return
+    setUpdatingWindowId(window.id)
+    const result = await updateCycleWindowStatus({
+      windowId: window.id,
+      isOpen,
+      admin: liveProfile,
+    })
+    setUpdatingWindowId(null)
+    if (result.success) {
+      toast({
+        title: isOpen ? 'Window opened' : 'Window closed',
+        description: `${window.name} updated in Supabase.`,
+      })
+      await loadCycle()
+    } else {
+      toast({
+        title: 'Cycle update failed',
+        description: result.error ?? 'Could not update cycle window.',
+        variant: 'destructive',
+      })
     }
-  }
-
-  const getStatusIcon = (status: 'completed' | 'active' | 'upcoming') => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="h-5 w-5 text-muted-foreground" />
-      case 'active':
-        return <PlayCircle className="h-5 w-5 text-success" />
-      case 'upcoming':
-        return <Clock className="h-5 w-5 text-muted-foreground" />
-    }
-  }
-
-  const handleOpenWindow = (windowId: string) => {
-    console.log('Opening window:', windowId)
-  }
-
-  const handleCloseWindow = (windowId: string) => {
-    console.log('Closing window:', windowId)
-  }
-
-  const handleLockGoals = () => {
-    console.log('Locking all approved goals')
-  }
-
-  const handleSendReminder = () => {
-    console.log('Sending reminder to pending employees')
   }
 
   return (
     <DashboardLayout role="admin">
       <DashboardHeader title="Cycle Management" />
 
-      <div className="p-6 space-y-6">
-        {/* Active Cycle Overview */}
-        <Card className="shadow-sm border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                  <Calendar className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl">{mockGoalCycle.name}</CardTitle>
-                  <CardDescription>
-                    April 2025 - March 2026 | Financial Year 2025-26
-                  </CardDescription>
-                </div>
-              </div>
-              <Badge className="bg-success text-success-foreground px-3 py-1">
-                Active Cycle
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="rounded-lg border border-border bg-card p-4">
-                <p className="text-xs text-muted-foreground mb-1">Cycle Start</p>
-                <p className="text-lg font-semibold">1 Apr 2025</p>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-4">
-                <p className="text-xs text-muted-foreground mb-1">Cycle End</p>
-                <p className="text-lg font-semibold">31 Mar 2026</p>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-4">
-                <p className="text-xs text-muted-foreground mb-1">Current Phase</p>
-                <p className="text-lg font-semibold text-success">Q2 Check-in</p>
-              </div>
-              <div className="rounded-lg border border-border bg-card p-4">
-                <p className="text-xs text-muted-foreground mb-1">Days Remaining</p>
-                <p className="text-lg font-semibold">168</p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex items-center gap-3">
-              <Button variant="outline" size="sm" onClick={handleSendReminder}>
-                <Bell className="mr-2 h-4 w-4" />
-                Send Reminder
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleLockGoals}>
-                <Lock className="mr-2 h-4 w-4" />
-                Lock Goals
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Cycle Timeline */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">Cycle Windows</CardTitle>
-            <CardDescription>
-              Manage goal creation and quarterly check-in windows
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {cycleWindows.map((window, index) => (
-                <div
-                  key={window.id}
-                  className={`relative rounded-lg border p-4 transition-colors ${
-                    window.status === 'active' 
-                      ? 'border-success/30 bg-success/5' 
-                      : 'border-border bg-card'
-                  } ${selectedWindow === window.id ? 'ring-2 ring-primary/20' : ''}`}
-                  onClick={() => setSelectedWindow(window.id)}
-                >
-                  {/* Timeline connector */}
-                  {index < cycleWindows.length - 1 && (
-                    <div className="absolute left-7 top-16 h-8 w-0.5 bg-border" />
-                  )}
-                  
-                  <div className="flex items-start gap-4">
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-                      window.status === 'active' 
-                        ? 'bg-success/10' 
-                        : window.status === 'completed'
-                          ? 'bg-muted'
-                          : 'bg-muted/50'
-                    }`}>
-                      {getStatusIcon(window.status)}
+      <div className="space-y-6 p-6">
+        {!isLoading && !cycle ? (
+          <Card className="border-border/60">
+            <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <Calendar className="mb-3 h-12 w-12 text-primary" />
+              <h3 className="text-lg font-semibold">No live cycle found.</h3>
+              <p className="mt-2 max-w-md text-sm text-muted-foreground">
+                Add a goal cycle and cycle windows in Supabase to manage the hackathon demo lifecycle.
+              </p>
+            </CardContent>
+          </Card>
+        ) : cycle ? (
+          <>
+            <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader>
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                      <Calendar className="h-6 w-6 text-primary" />
                     </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h4 className="font-medium">{window.name}</h4>
-                        {getStatusBadge(window.status)}
+                    <div>
+                      <CardTitle className="text-xl">{cycle.name}</CardTitle>
+                      <CardDescription>
+                        {formatDate(cycle.startDate)} - {formatDate(cycle.endDate)}
+                      </CardDescription>
+                    </div>
+                  </div>
+                  <Badge className="bg-success text-success-foreground px-3 py-1">
+                    {cycle.status === 'active' ? 'Active Cycle' : cycle.status}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <p className="mb-1 text-xs text-muted-foreground">Cycle Start</p>
+                    <p className="text-lg font-semibold">{formatDate(cycle.startDate)}</p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <p className="mb-1 text-xs text-muted-foreground">Cycle End</p>
+                    <p className="text-lg font-semibold">{formatDate(cycle.endDate)}</p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <p className="mb-1 text-xs text-muted-foreground">Current Phase</p>
+                    <p className="text-lg font-semibold text-success">
+                      {activeWindow?.name ?? 'No open window'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-card p-4">
+                    <p className="mb-1 text-xs text-muted-foreground">Days Remaining</p>
+                    <p className="text-lg font-semibold">{daysRemaining}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/60">
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold">Cycle Windows</CardTitle>
+                <CardDescription>Open or close goal creation and quarterly check-in windows.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {cycle.windows.map((window, index) => {
+                    const Icon = windowIcon(window)
+                    return (
+                      <div
+                        key={window.id}
+                        className={`relative rounded-lg border p-4 ${
+                          window.status === 'active'
+                            ? 'border-success/30 bg-success/5'
+                            : 'border-border bg-card'
+                        }`}
+                      >
+                        {index < cycle.windows.length - 1 && (
+                          <div className="absolute left-7 top-16 h-8 w-0.5 bg-border" />
+                        )}
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <h4 className="font-medium">{window.name}</h4>
+                              {statusBadge(window.status)}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                {formatDate(window.startDate)}
+                              </span>
+                              <span>to</span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                {formatDate(window.endDate)}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {window.status !== 'active' ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleToggleWindow(window, true)}
+                                disabled={updatingWindowId === window.id}
+                              >
+                                <PlayCircle className="mr-1 h-4 w-4" />
+                                Open
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleToggleWindow(window, false)}
+                                disabled={updatingWindowId === window.id}
+                              >
+                                <StopCircle className="mr-1 h-4 w-4" />
+                                Close
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        {window.description}
-                      </p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {window.start}
-                        </span>
-                        <span>→</span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {window.end}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {window.status === 'upcoming' && (
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleOpenWindow(window.id)
-                          }}
-                        >
-                          <PlayCircle className="mr-1 h-4 w-4" />
-                          Open
-                        </Button>
-                      )}
-                      {window.status === 'active' && (
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleCloseWindow(window.id)
-                          }}
-                        >
-                          <StopCircle className="mr-1 h-4 w-4" />
-                          Close
-                        </Button>
-                      )}
-                      {window.status === 'completed' && (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <CheckCircle2 className="h-4 w-4" />
-                          Closed
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                    )
+                  })}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Quick Actions */}
-        <Card className="shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold">Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-lg border border-border p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-warning/10">
-                    <AlertCircle className="h-4 w-4 text-warning-foreground" />
-                  </div>
-                  <h4 className="font-medium">Pending Submissions</h4>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  12 employees have not submitted their goal sheets
-                </p>
-                <Button variant="outline" size="sm" className="w-full">
-                  <Bell className="mr-2 h-4 w-4" />
-                  Send Reminder
-                </Button>
-              </div>
-
-              <div className="rounded-lg border border-border p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                    <Clock className="h-4 w-4 text-primary" />
-                  </div>
-                  <h4 className="font-medium">Pending Approvals</h4>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  8 goal sheets awaiting manager approval
-                </p>
-                <Button variant="outline" size="sm" className="w-full">
-                  <Bell className="mr-2 h-4 w-4" />
-                  Notify Managers
-                </Button>
-              </div>
-
-              <div className="rounded-lg border border-border p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-success/10">
-                    <Lock className="h-4 w-4 text-success" />
-                  </div>
-                  <h4 className="font-medium">Lock All Goals</h4>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Lock all approved goals to prevent further edits
-                </p>
-                <Button variant="outline" size="sm" className="w-full">
-                  <Lock className="mr-2 h-4 w-4" />
-                  Lock Goals
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </>
+        ) : (
+          <Card className="border-border/60">
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">
+              Loading cycle management...
+            </CardContent>
+          </Card>
+        )}
       </div>
     </DashboardLayout>
   )

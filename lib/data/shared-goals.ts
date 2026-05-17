@@ -2,7 +2,14 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
-import { isRealUuid, mapUomFromDb } from '@/lib/data/goals'
+import { createAuditLog } from '@/lib/data/audit-logs'
+import { createNotification } from '@/lib/data/notifications'
+import {
+  getThrustAreaIdByName,
+  isRealUuid,
+  mapUomFromDb,
+  mapUomToDb,
+} from '@/lib/data/goals'
 import type { SharedGoal, UnitOfMeasurement, User } from '@/lib/types'
 
 type DbRelation<T> = T | T[] | null | undefined
@@ -56,6 +63,18 @@ export type SharedGoalEmployeeLink = {
 export type SharedGoalRecord = Omit<SharedGoal, 'linkedEmployees'> & {
   targetDate: string | null
   linkedEmployees: SharedGoalEmployeeLink[]
+}
+
+export type CreateSharedGoalInput = {
+  title: string
+  description: string
+  target: number
+  unitOfMeasurement: UnitOfMeasurement
+  thrustArea: string
+  primaryOwnerId: string
+  employeeIds: string[]
+  cycleId: string
+  createdBy: User
 }
 
 function first<T>(relation: DbRelation<T>): T | null {
@@ -227,5 +246,92 @@ export async function getSharedGoalByIdForProfile(
   } catch (err) {
     console.error('[getSharedGoalByIdForProfile] unexpected error:', err)
     return null
+  }
+}
+
+export async function createSharedGoalWithAssignments(
+  input: CreateSharedGoalInput
+): Promise<{ success: boolean; error: string | null }> {
+  if (
+    !isSupabaseConfigured() ||
+    !isRealUuid(input.createdBy.id) ||
+    !isRealUuid(input.primaryOwnerId) ||
+    !isRealUuid(input.cycleId) ||
+    input.employeeIds.some((id) => !isRealUuid(id))
+  ) {
+    return { success: false, error: 'Invalid shared goal payload.' }
+  }
+
+  const supabase = createClient()
+  if (!supabase) {
+    return { success: false, error: 'Supabase client unavailable.' }
+  }
+
+  try {
+    const thrustAreaId = await getThrustAreaIdByName(input.thrustArea)
+    const { data: sharedGoal, error: goalError } = await supabase
+      .from('shared_goals')
+      .insert({
+        cycle_id: input.cycleId,
+        created_by: input.createdBy.id,
+        primary_owner_id: input.primaryOwnerId,
+        thrust_area_id: thrustAreaId,
+        title: input.title.trim(),
+        description: input.description.trim() || null,
+        uom_type: mapUomToDb(input.unitOfMeasurement),
+        target: input.unitOfMeasurement === 'timeline' ? 0 : input.target,
+        target_date: null,
+        status: 'active',
+      })
+      .select('id')
+      .single()
+
+    if (goalError || !sharedGoal) {
+      return { success: false, error: goalError?.message ?? 'Could not create shared goal.' }
+    }
+
+    const sharedGoalId = (sharedGoal as { id: string }).id
+    const assignments = input.employeeIds.map((employeeId) => ({
+      shared_goal_id: sharedGoalId,
+      employee_id: employeeId,
+      weightage: null,
+    }))
+
+    const { error: assignmentError } = await supabase
+      .from('shared_goal_assignments')
+      .insert(assignments)
+
+    if (assignmentError) {
+      return { success: false, error: assignmentError.message }
+    }
+
+    await Promise.all(
+      input.employeeIds.map((employeeId) =>
+        createNotification({
+          userId: employeeId,
+          type: 'shared_goal_assigned',
+          title: 'Shared KPI Assigned',
+          message: input.title.trim(),
+          link: `/employee/shared-goals/${sharedGoalId}`,
+        })
+      )
+    )
+
+    await createAuditLog({
+      actorId: input.createdBy.id,
+      actorRole: 'admin',
+      goalId: null,
+      actionType: 'shared_kpi_pushed',
+      fieldChanged: 'Shared KPI',
+      newValue: input.title.trim(),
+      description: `Shared KPI pushed to ${input.employeeIds.length} employee(s).`,
+    })
+
+    return { success: true, error: null }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to create shared KPI.',
+    }
   }
 }

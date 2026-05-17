@@ -42,7 +42,7 @@ const employeeNavItems = [
 
 const managerNavItems = [
   { href: '/manager', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/manager/approvals', label: 'Approvals', icon: CheckSquare, badge: 2 },
+  { href: '/manager/approvals', label: 'Approvals', icon: CheckSquare },
   { href: '/manager/team-goals', label: 'Team Goals', icon: Target },
   { href: '/manager/check-ins', label: 'Check-ins', icon: CalendarCheck },
   { href: '/manager/performance', label: 'Performance', icon: BarChart3 },
@@ -52,7 +52,7 @@ const adminNavItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/shared-goals', label: 'Shared Goals', icon: Share2 },
   { href: '/admin/cycle-management', label: 'Cycle Management', icon: Clock },
-  { href: '/admin/escalations', label: 'Escalations', icon: AlertTriangle, badge: 4 },
+  { href: '/admin/escalations', label: 'Escalations', icon: AlertTriangle },
   { href: '/admin/audit-trail', label: 'Audit Trail', icon: ClipboardList },
   { href: '/admin/reports-export', label: 'Reports & Export', icon: BarChart3 },
 ]
@@ -103,7 +103,9 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
       {/* Main Navigation */}
       <nav className="flex-1 space-y-1 px-3 pb-4">
         {navItems.map((item) => {
-          const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href + '/'))
+          const isActive =
+            pathname === item.href ||
+            (item.href.split('/').length > 2 && pathname.startsWith(item.href + '/'))
           return (
             <Link
               key={item.href}
