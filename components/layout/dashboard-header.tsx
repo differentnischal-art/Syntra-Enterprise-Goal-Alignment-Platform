@@ -51,12 +51,25 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
         </div>
       )}
 
-      <Header
-        user={profile}
-        title={title}
-        subtitle={subtitle}
-        showRoleSwitcher={isUsingMockFallback}
-      />
+      {profile ? (
+        <Header
+          user={profile}
+          title={title}
+          subtitle={subtitle}
+          showRoleSwitcher={isUsingMockFallback}
+        />
+      ) : (
+        <div className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-card px-6">
+          <div>
+            <h1 className="text-lg font-semibold text-foreground">
+              {title ?? 'AlignOS'}
+            </h1>
+            <p className="text-xs text-destructive">
+              Profile unavailable. Please sign in again or contact Admin/HR.
+            </p>
+          </div>
+        </div>
+      )}
     </>
   )
 }

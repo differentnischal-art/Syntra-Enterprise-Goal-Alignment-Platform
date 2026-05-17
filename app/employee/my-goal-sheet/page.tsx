@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -18,6 +19,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { mockActivityLogs } from '@/lib/mock-data'
+import { getAuditLogs, type AuditLogRow } from '@/lib/data/audit-logs'
+import { isRealUuid } from '@/lib/data/goals'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { useEmployeeGoalSheetData } from '@/hooks/use-employee-goal-sheet-data'
 import type { GoalSheet, GoalSheetStatus } from '@/lib/types'
 import {
@@ -38,8 +42,64 @@ const uomLabels: Record<string, string> = {
   'numeric-higher-better': 'Higher Better',
   'numeric-lower-better': 'Lower Better',
   percentage: 'Percentage',
+  'percentage-higher-better': 'Percentage - Higher Better',
+  'percentage-lower-better': 'Percentage - Lower Better',
   timeline: 'Timeline',
   'zero-based': 'Zero Based',
+}
+
+type DisplayActivity = {
+  id: string
+  type:
+    | 'goal-approved'
+    | 'goal-returned'
+    | 'checkin-submitted'
+    | 'shared-goal-pushed'
+    | 'comment-added'
+    | 'other'
+  description: string
+  timestamp: string
+  actorName: string
+}
+
+function mapMockActivity(activity: (typeof mockActivityLogs)[number]): DisplayActivity {
+  return {
+    id: activity.id,
+    type:
+      activity.type === 'goal-approved' ||
+      activity.type === 'goal-returned' ||
+      activity.type === 'checkin-submitted' ||
+      activity.type === 'shared-goal-pushed' ||
+      activity.type === 'comment-added'
+        ? activity.type
+        : 'other',
+    description: activity.description,
+    timestamp: activity.timestamp,
+    actorName: activity.actorName,
+  }
+}
+
+function mapAuditActivity(row: AuditLogRow): DisplayActivity {
+  const type =
+    row.actionType === 'goal_approved'
+      ? 'goal-approved'
+      : row.actionType === 'goal_returned'
+        ? 'goal-returned'
+        : row.actionType === 'checkin_submitted'
+          ? 'checkin-submitted'
+          : row.actionType === 'comment_added'
+            ? 'comment-added'
+            : row.actionType === 'shared_goal_assigned'
+              ? 'shared-goal-pushed'
+              : 'other'
+
+  return {
+    id: row.id,
+    type,
+    description: row.description ?? `${row.actorName} ${row.actionType.replace(/_/g, ' ')}`,
+    timestamp: row.createdAt,
+    actorName: row.actorName,
+  }
 }
 
 function sheetStatusForBadge(status: GoalSheetStatus): GoalSheetStatus {
@@ -99,17 +159,44 @@ function StatusBanner({ goalSheet }: { goalSheet: GoalSheet }) {
 
 export default function MyGoalSheetPage() {
   const {
+    profile,
     activeCycle,
     goals,
     goalSheet,
     dataSource,
     fetchError,
   } = useEmployeeGoalSheetData()
+  const [liveActivityLogs, setLiveActivityLogs] = useState<AuditLogRow[] | null>(null)
+
+  useEffect(() => {
+    if (
+      !isSupabaseConfigured() ||
+      !profile ||
+      !isRealUuid(profile.id)
+    ) {
+      setLiveActivityLogs(null)
+      return
+    }
+
+    let cancelled = false
+    getAuditLogs({ employeeId: profile.id }).then((logs) => {
+      if (!cancelled) {
+        setLiveActivityLogs(logs)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [profile])
 
   const showEmptyState = dataSource === 'supabase-empty'
   const maxGoals = 8
   const totalWeightage = goalSheet?.totalWeightage ?? goals.reduce((sum, g) => sum + g.weightage, 0)
   const goalsCount = goalSheet?.goalsCount ?? goals.length
+  const activityLogs: DisplayActivity[] = isSupabaseConfigured()
+    ? (liveActivityLogs ?? []).map(mapAuditActivity)
+    : mockActivityLogs.map(mapMockActivity)
 
   const sourceBadgeLabel =
     dataSource === 'supabase'
@@ -122,7 +209,7 @@ export default function MyGoalSheetPage() {
 
   return (
     <DashboardLayout role="employee">
-      <DashboardHeader title="My Goal Sheet" subtitle={activeCycle.name} />
+      <DashboardHeader title="My Goal Sheet" subtitle={activeCycle?.name ?? 'No active cycle'} />
 
       <div className="p-6 space-y-6">
         <Badge
@@ -136,7 +223,7 @@ export default function MyGoalSheetPage() {
           <Alert className="border-destructive/30 bg-destructive/5">
             <AlertCircle className="h-4 w-4 text-destructive" />
             <AlertDescription className="text-destructive">
-              {fetchError}. Showing demo goal sheet.
+              {fetchError}
             </AlertDescription>
           </Alert>
         )}
@@ -149,7 +236,7 @@ export default function MyGoalSheetPage() {
                 No goal sheet found for this cycle
               </h3>
               <p className="text-sm text-muted-foreground mt-2 max-w-md">
-                Create your {activeCycle.name} goal sheet to get started.
+                Create your {activeCycle?.name ?? 'active cycle'} goal sheet to get started.
               </p>
               <Button className="mt-6" asChild>
                 <Link href="/employee/create-goal-sheet">Create Goal Sheet</Link>
@@ -166,7 +253,7 @@ export default function MyGoalSheetPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <CardTitle className="text-base font-semibold">Goal Sheet Status</CardTitle>
-                      <CardDescription>{activeCycle.name}</CardDescription>
+                      <CardDescription>{activeCycle?.name ?? 'No active cycle'}</CardDescription>
                     </div>
                     {goalSheet && (
                       <StatusBadge
@@ -298,7 +385,9 @@ export default function MyGoalSheetPage() {
                             {uomLabels[goal.unitOfMeasurement]}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {goal.target}
+                            {goal.unitOfMeasurement === 'timeline'
+                              ? goal.targetDate ?? '—'
+                              : goal.target}
                           </TableCell>
                           <TableCell className="text-right tabular-nums font-medium">
                             {goal.weightage}%
@@ -334,7 +423,7 @@ export default function MyGoalSheetPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {mockActivityLogs.slice(0, 6).map((activity, index) => (
+                  {activityLogs.slice(0, 6).map((activity, index) => (
                     <div key={activity.id} className="flex gap-4">
                       <div className="relative flex flex-col items-center">
                         <div
@@ -367,7 +456,7 @@ export default function MyGoalSheetPage() {
                             <Share2 className="h-4 w-4" />
                           )}
                         </div>
-                        {index < mockActivityLogs.slice(0, 6).length - 1 && (
+                        {index < activityLogs.slice(0, 6).length - 1 && (
                           <div className="flex-1 w-px bg-border mt-2" />
                         )}
                       </div>

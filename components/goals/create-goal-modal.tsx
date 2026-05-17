@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Goal, UnitOfMeasurement } from '@/lib/types'
-import { thrustAreas } from '@/lib/mock-data'
+import { DEFAULT_THRUST_AREAS } from '@/lib/constants/reference-data'
 import {
   Dialog,
   DialogContent,
@@ -48,6 +48,7 @@ export function CreateGoalModal({
   const [thrustArea, setThrustArea] = useState('')
   const [unitOfMeasurement, setUnitOfMeasurement] = useState<UnitOfMeasurement>('numeric-higher-better')
   const [target, setTarget] = useState('')
+  const [targetDate, setTargetDate] = useState('')
   const [weightage, setWeightage] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -68,6 +69,7 @@ export function CreateGoalModal({
         setThrustArea(editGoal.thrustArea)
         setUnitOfMeasurement(editGoal.unitOfMeasurement)
         setTarget(editGoal.target.toString())
+        setTargetDate(editGoal.targetDate ?? '')
         setWeightage(editGoal.weightage.toString())
       } else {
         setTitle('')
@@ -75,6 +77,7 @@ export function CreateGoalModal({
         setThrustArea('')
         setUnitOfMeasurement('numeric-higher-better')
         setTarget('')
+        setTargetDate('')
         setWeightage('')
       }
       setErrors({})
@@ -96,8 +99,23 @@ export function CreateGoalModal({
       newErrors.thrustArea = 'Please select a thrust area'
     }
 
-    if (!target || isNaN(parseFloat(target)) || parseFloat(target) <= 0) {
+    if (unitOfMeasurement === 'timeline') {
+      if (!targetDate || Number.isNaN(Date.parse(targetDate))) {
+        newErrors.target = 'Please enter a valid target date'
+      }
+    } else if (unitOfMeasurement === 'zero-based') {
+      if (target !== '0') {
+        newErrors.target = 'Zero-based goals must use target 0'
+      }
+    } else if (!target || isNaN(parseFloat(target)) || parseFloat(target) < 0) {
       newErrors.target = 'Please enter a valid target value'
+    } else if (
+      (unitOfMeasurement === 'percentage' ||
+        unitOfMeasurement === 'percentage-higher-better' ||
+        unitOfMeasurement === 'percentage-lower-better') &&
+      parseFloat(target) > 100
+    ) {
+      newErrors.target = 'Percentage targets must be between 0 and 100'
     }
 
     if (!weightage || isNaN(parseInt(weightage, 10))) {
@@ -127,7 +145,11 @@ export function CreateGoalModal({
       description: description.trim(),
       thrustArea,
       unitOfMeasurement,
-      target: parseFloat(target),
+      target:
+        unitOfMeasurement === 'zero-based' || unitOfMeasurement === 'timeline'
+          ? 0
+          : parseFloat(target),
+      targetDate: unitOfMeasurement === 'timeline' ? targetDate : null,
       weightage: parseInt(weightage, 10),
       status: 'not-started',
     })
@@ -137,8 +159,11 @@ export function CreateGoalModal({
     title.trim() &&
     description.trim() &&
     thrustArea &&
-    target &&
-    parseFloat(target) > 0 &&
+    (unitOfMeasurement === 'timeline'
+      ? targetDate
+      : unitOfMeasurement === 'zero-based'
+        ? target === '0'
+        : target && parseFloat(target) >= 0) &&
     weightage &&
     parseInt(weightage, 10) >= MIN_WEIGHTAGE &&
     (editGoal || existingGoals.length < MAX_GOALS)
@@ -234,7 +259,7 @@ export function CreateGoalModal({
                 <SelectValue placeholder="Select a thrust area" />
               </SelectTrigger>
               <SelectContent>
-                {thrustAreas.map((area) => (
+                {DEFAULT_THRUST_AREAS.map((area) => (
                   <SelectItem key={area} value={area}>
                     {area}
                   </SelectItem>
@@ -251,7 +276,18 @@ export function CreateGoalModal({
             <Label>Unit of Measurement</Label>
             <RadioGroup
               value={unitOfMeasurement}
-              onValueChange={(value) => setUnitOfMeasurement(value as UnitOfMeasurement)}
+              onValueChange={(value) => {
+                const nextUom = value as UnitOfMeasurement
+                setUnitOfMeasurement(nextUom)
+                if (nextUom === 'zero-based') {
+                  setTarget('0')
+                  setTargetDate('')
+                } else if (nextUom === 'timeline') {
+                  setTarget('')
+                } else {
+                  setTargetDate('')
+                }
+              }}
               className="grid gap-3 sm:grid-cols-2"
             >
               <div className="flex items-center space-x-3 rounded-lg border border-border p-3 hover:bg-muted/50">
@@ -267,14 +303,26 @@ export function CreateGoalModal({
                 </Label>
               </div>
               <div className="flex items-center space-x-3 rounded-lg border border-border p-3 hover:bg-muted/50">
-                <RadioGroupItem value="timeline" id="uom-3" />
+                <RadioGroupItem value="percentage-higher-better" id="uom-3" />
                 <Label htmlFor="uom-3" className="flex-1 cursor-pointer text-sm font-normal">
+                  Percentage - Higher is Better
+                </Label>
+              </div>
+              <div className="flex items-center space-x-3 rounded-lg border border-border p-3 hover:bg-muted/50">
+                <RadioGroupItem value="percentage-lower-better" id="uom-4" />
+                <Label htmlFor="uom-4" className="flex-1 cursor-pointer text-sm font-normal">
+                  Percentage - Lower is Better
+                </Label>
+              </div>
+              <div className="flex items-center space-x-3 rounded-lg border border-border p-3 hover:bg-muted/50">
+                <RadioGroupItem value="timeline" id="uom-5" />
+                <Label htmlFor="uom-5" className="flex-1 cursor-pointer text-sm font-normal">
                   Timeline
                 </Label>
               </div>
               <div className="flex items-center space-x-3 rounded-lg border border-border p-3 hover:bg-muted/50">
-                <RadioGroupItem value="zero-based" id="uom-4" />
-                <Label htmlFor="uom-4" className="flex-1 cursor-pointer text-sm font-normal">
+                <RadioGroupItem value="zero-based" id="uom-6" />
+                <Label htmlFor="uom-6" className="flex-1 cursor-pointer text-sm font-normal">
                   Zero Based
                 </Label>
               </div>
@@ -285,16 +333,35 @@ export function CreateGoalModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="target">Target</Label>
-              <Input
-                id="target"
-                type="number"
-                placeholder="e.g., 15"
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                className={errors.target ? 'border-destructive' : ''}
-                min="0"
-                step="any"
-              />
+              {unitOfMeasurement === 'timeline' ? (
+                <Input
+                  id="target"
+                  type="date"
+                  value={targetDate}
+                  onChange={(e) => setTargetDate(e.target.value)}
+                  className={errors.target ? 'border-destructive' : ''}
+                />
+              ) : (
+                <Input
+                  id="target"
+                  type="number"
+                  placeholder={unitOfMeasurement === 'zero-based' ? '0' : 'e.g., 15'}
+                  value={unitOfMeasurement === 'zero-based' ? '0' : target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  className={errors.target ? 'border-destructive' : ''}
+                  min="0"
+                  max={
+                    unitOfMeasurement === 'percentage' ||
+                    unitOfMeasurement === 'percentage-higher-better' ||
+                    unitOfMeasurement === 'percentage-lower-better'
+                      ? 100
+                      : undefined
+                  }
+                  step="any"
+                  readOnly={unitOfMeasurement === 'zero-based'}
+                  disabled={unitOfMeasurement === 'zero-based'}
+                />
+              )}
               {errors.target && (
                 <p className="text-sm text-destructive">{errors.target}</p>
               )}

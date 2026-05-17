@@ -59,14 +59,14 @@ export function useManagerPendingApprovals() {
   }, [loadPending])
 
   const dataSource: ManagerApprovalsDataSource = useMemo(() => {
-    if (!canFetch || fetchError) {
+    if (!isSupabaseConfigured()) {
       return 'demo'
     }
     if (isLoading) {
       return 'loading'
     }
     return 'supabase'
-  }, [canFetch, fetchError, isLoading])
+  }, [isLoading])
 
   const demoPendingMembers = useMemo(
     () => mockTeamMembers.filter((m) => m.approvalStatus === 'pending'),
@@ -76,7 +76,9 @@ export function useManagerPendingApprovals() {
   const pendingCount =
     dataSource === 'supabase'
       ? (pendingSheets?.length ?? 0)
-      : demoPendingMembers.length
+      : dataSource === 'demo'
+        ? demoPendingMembers.length
+        : 0
 
   const sourceLabel =
     dataSource === 'supabase'

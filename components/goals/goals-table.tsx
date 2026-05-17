@@ -30,6 +30,9 @@ interface GoalsTableProps {
 const uomLabels: Record<string, string> = {
   'numeric-higher-better': 'Higher Better',
   'numeric-lower-better': 'Lower Better',
+  percentage: 'Percentage',
+  'percentage-higher-better': 'Percentage - Higher Better',
+  'percentage-lower-better': 'Percentage - Lower Better',
   'timeline': 'Timeline',
   'zero-based': 'Zero Based',
 }
@@ -102,7 +105,9 @@ export function GoalsTable({
               <TableCell className="text-muted-foreground text-xs hidden lg:table-cell">
                 {uomLabels[goal.unitOfMeasurement]}
               </TableCell>
-              <TableCell className="text-right tabular-nums">{goal.target}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {goal.unitOfMeasurement === 'timeline' ? goal.targetDate ?? '—' : goal.target}
+              </TableCell>
               <TableCell className="text-right tabular-nums">{goal.weightage}%</TableCell>
               <TableCell>
                 <StatusBadge status={goal.status} type="goal" />

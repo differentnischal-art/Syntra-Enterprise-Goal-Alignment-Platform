@@ -8,6 +8,8 @@ export type UnitOfMeasurement =
   | 'numeric-higher-better' 
   | 'numeric-lower-better' 
   | 'percentage'
+  | 'percentage-higher-better'
+  | 'percentage-lower-better'
   | 'timeline' 
   | 'zero-based'
 
@@ -112,6 +114,7 @@ export interface Goal {
   thrustArea: string
   unitOfMeasurement: UnitOfMeasurement
   target: number
+  targetDate?: string | null
   weightage: number
   status: GoalStatus
   approvalStatus: ApprovalStatus

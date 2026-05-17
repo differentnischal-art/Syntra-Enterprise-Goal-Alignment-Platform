@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { UserRole, type GoalCycle } from '@/lib/types'
-import { mockGoalCycle } from '@/lib/mock-data'
 import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -60,8 +59,7 @@ const adminNavItems = [
 
 export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
   const pathname = usePathname()
-  // First Supabase slice: active cycle from DB when configured; mock fallback during migration.
-  const [activeGoalCycle, setActiveGoalCycle] = useState<GoalCycle>(mockGoalCycle)
+  const [activeGoalCycle, setActiveGoalCycle] = useState<GoalCycle | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -188,7 +186,9 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
                 <Clock className="h-3.5 w-3.5 text-primary" />
               </div>
               <div>
-                <p className="text-xs font-medium text-sidebar-foreground">{activeGoalCycle.name}</p>
+                <p className="text-xs font-medium text-sidebar-foreground">
+                  {activeGoalCycle?.name ?? 'No active cycle'}
+                </p>
                 <p className="text-[10px] text-sidebar-foreground/50">Active Cycle</p>
               </div>
             </div>

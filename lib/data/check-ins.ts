@@ -163,6 +163,7 @@ const GOAL_SHEET_CHECKIN_SELECT = `
     description,
     uom_type,
     target,
+    target_date,
     weightage,
     status,
     approval_status,
@@ -198,6 +199,7 @@ const MANAGER_GOAL_SHEET_CHECKIN_SELECT = `
     description,
     uom_type,
     target,
+    target_date,
     weightage,
     status,
     approval_status,
@@ -227,8 +229,23 @@ export function calculateCheckInScore(params: {
   uomType: UnitOfMeasurement
   plannedTarget: number
   actualAchievement: number | null
+  targetDate?: string | null
+  actualCompletionDate?: string | null
 }): number | null {
-  const { uomType, plannedTarget, actualAchievement } = params
+  const {
+    uomType,
+    plannedTarget,
+    actualAchievement,
+    targetDate,
+    actualCompletionDate,
+  } = params
+
+  if (uomType === 'timeline') {
+    if (!targetDate || !actualCompletionDate) {
+      return null
+    }
+    return actualCompletionDate <= targetDate ? 100 : 0
+  }
 
   if (actualAchievement === null || Number.isNaN(actualAchievement)) {
     return null
@@ -242,14 +259,17 @@ export function calculateCheckInScore(params: {
     return actualAchievement === 0 ? 100 : null
   }
 
-  if (uomType === 'numeric-lower-better') {
+  if (
+    uomType === 'numeric-lower-better' ||
+    uomType === 'percentage-lower-better'
+  ) {
     if (actualAchievement === 0) {
       return 100
     }
-    return Math.round((plannedTarget / actualAchievement) * 100)
+    return Math.max(0, Math.min(100, Math.round((plannedTarget / actualAchievement) * 100)))
   }
 
-  return Math.round((actualAchievement / plannedTarget) * 100)
+  return Math.max(0, Math.min(100, Math.round((actualAchievement / plannedTarget) * 100)))
 }
 
 function profileRelationToUser(
@@ -320,6 +340,7 @@ function mergeGoalsWithCheckIns(params: {
             uomType: goal.unitOfMeasurement,
             plannedTarget,
             actualAchievement,
+            targetDate: goal.targetDate,
           })
         : Number(checkIn.computed_score)
 

@@ -75,6 +75,13 @@ export type ManagerApprovalResult = {
   demoMode?: boolean
 }
 
+export type ManagerGoalEditInput = {
+  goalId: string
+  target: number
+  targetDate?: string | null
+  weightage: number
+}
+
 const PENDING_GOAL_SHEET_SELECT = `
   id,
   employee_id,
@@ -107,6 +114,7 @@ const PENDING_GOAL_SHEET_SELECT = `
     description,
     uom_type,
     target,
+    target_date,
     weightage,
     status,
     approval_status,
@@ -295,6 +303,197 @@ export async function getManagerGoalSheetForReview(
   } catch (err) {
     console.error('[getManagerGoalSheetForReview] unexpected error:', err)
     return null
+  }
+}
+
+export async function saveManagerGoalEdits(
+  goalSheetId: string,
+  managerId: string,
+  edits: ManagerGoalEditInput[]
+): Promise<ManagerApprovalResult> {
+  if (!isSupabaseConfigured()) {
+    return { success: false, error: null, demoMode: true }
+  }
+
+  if (
+    !isRealUuid(goalSheetId) ||
+    !isRealUuid(managerId) ||
+    edits.some((edit) => !isRealUuid(edit.goalId))
+  ) {
+    return { success: false, error: 'Invalid manager edit payload' }
+  }
+
+  if (edits.length === 0) {
+    return { success: false, error: 'No goal edits were provided.' }
+  }
+
+  const totalWeightage = edits.reduce((sum, edit) => sum + edit.weightage, 0)
+  if (totalWeightage !== 100) {
+    return { success: false, error: 'Total weightage must remain exactly 100%.' }
+  }
+
+  for (const edit of edits) {
+    if (!Number.isFinite(edit.weightage) || edit.weightage < 10 || edit.weightage > 100) {
+      return { success: false, error: 'Each goal weightage must be between 10 and 100.' }
+    }
+    if (!Number.isFinite(edit.target) || edit.target < 0) {
+      return { success: false, error: 'Goal targets cannot be negative.' }
+    }
+  }
+
+  const supabase = createClient()
+  if (!supabase) {
+    return { success: false, error: 'Supabase client unavailable' }
+  }
+
+  try {
+    const { data: sheetData, error: sheetError } = await supabase
+      .from('goal_sheets')
+      .select('employee_id, manager_id, status')
+      .eq('id', goalSheetId)
+      .eq('manager_id', managerId)
+      .maybeSingle()
+
+    if (sheetError) {
+      console.error('[saveManagerGoalEdits] sheet error:', sheetError.message)
+      return { success: false, error: sheetError.message }
+    }
+
+    if (!sheetData || sheetData.status !== 'pending_approval') {
+      return { success: false, error: 'Only pending goal sheets can be edited by a manager.' }
+    }
+
+    const { data: currentRows, error: currentGoalsError } = await supabase
+      .from('goals')
+      .select('id, target, target_date, weightage, uom_type')
+      .eq('goal_sheet_id', goalSheetId)
+      .in(
+        'id',
+        edits.map((edit) => edit.goalId)
+      )
+
+    if (currentGoalsError) {
+      console.error('[saveManagerGoalEdits] fetch goals error:', currentGoalsError.message)
+      return { success: false, error: currentGoalsError.message }
+    }
+
+    const currentById = new Map(
+      (currentRows ?? []).map((row) => [
+        row.id,
+        {
+          target: Number(row.target),
+          targetDate: row.target_date as string | null,
+          weightage: Number(row.weightage),
+          uomType: row.uom_type as string,
+        },
+      ])
+    )
+
+    for (const edit of edits) {
+      const current = currentById.get(edit.goalId)
+      if (!current) {
+        return { success: false, error: 'One or more goals could not be found.' }
+      }
+
+      if (
+        current.uomType === 'timeline' &&
+        (!edit.targetDate || Number.isNaN(Date.parse(edit.targetDate)))
+      ) {
+        return { success: false, error: 'Timeline goals require a valid target date.' }
+      }
+      if (
+        ['percentage', 'percentage_higher_better', 'percentage_lower_better'].includes(
+          current.uomType
+        ) &&
+        edit.target > 100
+      ) {
+        return { success: false, error: 'Percentage targets must be between 0 and 100.' }
+      }
+      if (current.uomType === 'zero_based' && edit.target !== 0) {
+        return { success: false, error: 'Zero-based goals must use a target of 0.' }
+      }
+
+      const { error: updateError } = await supabase
+        .from('goals')
+        .update({
+          target: edit.target,
+          target_date: edit.targetDate ?? null,
+          weightage: edit.weightage,
+        })
+        .eq('id', edit.goalId)
+        .eq('goal_sheet_id', goalSheetId)
+
+      if (updateError) {
+        console.error('[saveManagerGoalEdits] update goal error:', updateError.message)
+        return { success: false, error: updateError.message }
+      }
+
+      if (current.target !== edit.target) {
+        await createAuditLog({
+          actorId: managerId,
+          actorRole: 'manager',
+          employeeId: sheetData.employee_id,
+          goalId: edit.goalId,
+          goalSheetId,
+          actionType: 'goal_updated',
+          fieldChanged: 'Target',
+          oldValue: String(current.target),
+          newValue: String(edit.target),
+          description: 'Manager updated submitted goal target during review',
+        })
+      }
+
+      if ((current.targetDate ?? null) !== (edit.targetDate ?? null)) {
+        await createAuditLog({
+          actorId: managerId,
+          actorRole: 'manager',
+          employeeId: sheetData.employee_id,
+          goalId: edit.goalId,
+          goalSheetId,
+          actionType: 'goal_updated',
+          fieldChanged: 'Target Date',
+          oldValue: current.targetDate,
+          newValue: edit.targetDate ?? null,
+          description: 'Manager updated submitted goal target date during review',
+        })
+      }
+
+      if (current.weightage !== edit.weightage) {
+        await createAuditLog({
+          actorId: managerId,
+          actorRole: 'manager',
+          employeeId: sheetData.employee_id,
+          goalId: edit.goalId,
+          goalSheetId,
+          actionType: 'goal_updated',
+          fieldChanged: 'Weightage',
+          oldValue: String(current.weightage),
+          newValue: String(edit.weightage),
+          description: 'Manager updated submitted goal weightage during review',
+        })
+      }
+    }
+
+    const { error: sheetUpdateError } = await supabase
+      .from('goal_sheets')
+      .update({
+        total_weightage: totalWeightage,
+        goals_count: edits.length,
+      })
+      .eq('id', goalSheetId)
+      .eq('manager_id', managerId)
+
+    if (sheetUpdateError) {
+      console.error('[saveManagerGoalEdits] sheet update error:', sheetUpdateError.message)
+      return { success: false, error: sheetUpdateError.message }
+    }
+
+    return { success: true, error: null }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to save manager goal edits',
+    }
   }
 }
 

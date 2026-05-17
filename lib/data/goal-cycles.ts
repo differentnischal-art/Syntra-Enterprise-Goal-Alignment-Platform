@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { mockGoalCycle } from '@/lib/mock-data'
 import type { GoalCycle } from '@/lib/types'
 
@@ -77,10 +78,10 @@ function mapRowToGoalCycle(row: DbGoalCycleRow): GoalCycle {
  * Fetches the active goal cycle from Supabase (with cycle windows).
  * Falls back to mockGoalCycle when env is missing or the query fails.
  */
-export async function getActiveGoalCycle(): Promise<GoalCycle> {
+export async function getActiveGoalCycle(): Promise<GoalCycle | null> {
   const supabase = createClient()
   if (!supabase) {
-    return mockGoalCycle
+    return isSupabaseConfigured() ? null : mockGoalCycle
   }
 
   try {
@@ -109,16 +110,16 @@ export async function getActiveGoalCycle(): Promise<GoalCycle> {
 
     if (error) {
       console.error('[getActiveGoalCycle] Supabase error:', error.message)
-      return mockGoalCycle
+      return null
     }
 
     if (!data) {
-      return mockGoalCycle
+      return null
     }
 
     return mapRowToGoalCycle(data as DbGoalCycleRow)
   } catch (err) {
     console.error('[getActiveGoalCycle] Unexpected error:', err)
-    return mockGoalCycle
+    return null
   }
 }

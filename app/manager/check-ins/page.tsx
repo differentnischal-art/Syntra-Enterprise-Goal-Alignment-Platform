@@ -35,6 +35,7 @@ import {
   type ManagerTeamCheckInRow,
 } from '@/lib/data/check-ins'
 import { mockCheckIns, mockGoals, mockTeamMembers } from '@/lib/mock-data'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import type { TeamMember } from '@/lib/types'
 import { Check, X, MessageSquare } from 'lucide-react'
 
@@ -166,7 +167,7 @@ export default function ManagerCheckInsPage() {
   const { liveProfile } = useCurrentProfile()
   const [activeQuarter, setActiveQuarter] = useState<QuarterLabel>('Q4')
   const [teamMembers, setTeamMembers] = useState<CheckInReviewMember[]>(() =>
-    buildDemoReviewMembers()
+    isSupabaseConfigured() ? [] : buildDemoReviewMembers()
   )
   const [liveQuarterRows, setLiveQuarterRows] = useState<
     Partial<Record<QuarterLabel, ManagerTeamCheckInRow[]>>
@@ -181,12 +182,16 @@ export default function ManagerCheckInsPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const isLiveMode = Boolean(liveProfile && Object.keys(liveQuarterRows).length > 0)
-  const sourceLabel = isLiveMode ? 'Live Supabase check-ins' : 'Demo check-ins'
+  const sourceLabel = isLiveMode
+    ? 'Live Supabase check-ins'
+    : isSupabaseConfigured()
+      ? 'No live check-ins yet'
+      : 'Demo check-ins'
 
   useEffect(() => {
     if (!liveProfile) {
       setLiveQuarterRows({})
-      setTeamMembers(buildDemoReviewMembers())
+      setTeamMembers(isSupabaseConfigured() ? [] : buildDemoReviewMembers())
       return
     }
 
@@ -216,7 +221,7 @@ export default function ManagerCheckInsPage() {
         setTeamMembers(mergeLiveQuarterRows(nextQuarterRows, activeQuarter))
       } else {
         setLiveQuarterRows({})
-        setTeamMembers(buildDemoReviewMembers())
+        setTeamMembers(isSupabaseConfigured() ? [] : buildDemoReviewMembers())
       }
 
       setIsLoading(false)
@@ -319,6 +324,10 @@ export default function ManagerCheckInsPage() {
     }
 
     if (!isLiveMode || !liveProfile) {
+      if (isSupabaseConfigured()) {
+        setCommentError('No submitted live check-in is available for review.')
+        return
+      }
       const demoComment: ManagerCheckInComment = {
         id: `demo-comment-${Date.now()}`,
         checkinId: selectedCheckinId,
@@ -397,37 +406,45 @@ export default function ManagerCheckInsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {teamMembers.map((member, index) => (
-                  <TableRow
-                    key={member.id}
-                    className={index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}
-                  >
-                    <TableCell className="font-medium">{member.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{member.department}</TableCell>
-                    <TableCell>{member.goalsCount}</TableCell>
-                    {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => (
-                      <TableCell key={quarter} className="text-center">
-                        {member.checkIns[quarter] ? (
-                          <Check className="mx-auto h-5 w-5 text-success" />
-                        ) : (
-                          <X className="mx-auto h-5 w-5 text-destructive" />
-                        )}
-                      </TableCell>
-                    ))}
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8"
-                        onClick={() => openCommentSheet(member)}
-                        disabled={isLoading}
-                      >
-                        <MessageSquare className="mr-1 h-4 w-4" />
-                        Review
-                      </Button>
+                {teamMembers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                      No submitted team check-ins found for the selected quarter.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  teamMembers.map((member, index) => (
+                    <TableRow
+                      key={member.id}
+                      className={index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}
+                    >
+                      <TableCell className="font-medium">{member.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{member.department}</TableCell>
+                      <TableCell>{member.goalsCount}</TableCell>
+                      {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => (
+                        <TableCell key={quarter} className="text-center">
+                          {member.checkIns[quarter] ? (
+                            <Check className="mx-auto h-5 w-5 text-success" />
+                          ) : (
+                            <X className="mx-auto h-5 w-5 text-destructive" />
+                          )}
+                        </TableCell>
+                      ))}
+                      <TableCell className="text-right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8"
+                          onClick={() => openCommentSheet(member)}
+                          disabled={isLoading}
+                        >
+                          <MessageSquare className="mr-1 h-4 w-4" />
+                          Review
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>

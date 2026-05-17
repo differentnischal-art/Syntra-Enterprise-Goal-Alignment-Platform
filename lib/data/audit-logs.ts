@@ -8,6 +8,7 @@ import { isRealUuid } from '@/lib/data/goals'
 import type { UserRole } from '@/lib/types'
 
 export type AuditActionType =
+  | 'goal_draft_saved'
   | 'goal_submitted'
   | 'goal_approved'
   | 'goal_returned'

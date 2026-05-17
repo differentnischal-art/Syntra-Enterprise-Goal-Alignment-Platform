@@ -21,7 +21,9 @@ export type EmployeeGoalsDataSource =
 
 export function useEmployeeGoalSheetData() {
   const { profile, liveProfile } = useCurrentProfile()
-  const [activeCycle, setActiveCycle] = useState<GoalCycle>(mockGoalCycle)
+  const [activeCycle, setActiveCycle] = useState<GoalCycle | null>(
+    isSupabaseConfigured() ? null : mockGoalCycle
+  )
   const [sheetData, setSheetData] = useState<{
     goalSheet: GoalSheet
     goals: Goal[]
@@ -33,6 +35,7 @@ export function useEmployeeGoalSheetData() {
   const canFetch = Boolean(
     isSupabaseConfigured() &&
       liveProfile &&
+      activeCycle &&
       isRealUuid(activeCycle.id) &&
       isRealUuid(liveProfile.id)
   )
@@ -62,7 +65,8 @@ export function useEmployeeGoalSheetData() {
 
     async function load() {
       const employee = liveProfile
-      if (!employee) return
+      const cycle = activeCycle
+      if (!employee || !cycle) return
 
       setIsLoading(true)
       setFetchError(null)
@@ -70,11 +74,11 @@ export function useEmployeeGoalSheetData() {
       try {
         const result = await getCurrentEmployeeGoalSheetWithGoals({
           employeeId: employee.id,
-          cycleId: activeCycle.id,
+          cycleId: cycle.id,
           employeeName: employee.name,
           department: employee.department,
           managerName: employee.managerName ?? 'Not assigned',
-          cycleName: activeCycle.name,
+          cycleName: cycle.name,
         })
 
         if (cancelled) return
@@ -106,19 +110,22 @@ export function useEmployeeGoalSheetData() {
     liveProfile?.name,
     liveProfile?.department,
     liveProfile?.managerName,
-    activeCycle.id,
-    activeCycle.name,
+    activeCycle?.id,
+    activeCycle?.name,
   ])
 
   const dataSource: EmployeeGoalsDataSource = useMemo(() => {
+    if (isSupabaseConfigured() && !activeCycle) {
+      return 'supabase-empty'
+    }
     if (!canFetch) {
-      return 'demo'
+      return isSupabaseConfigured() ? 'supabase-empty' : 'demo'
     }
     if (isLoading) {
       return 'loading'
     }
     if (fetchError) {
-      return 'demo'
+      return isSupabaseConfigured() ? 'supabase-empty' : 'demo'
     }
     if (sheetData) {
       return 'supabase'
@@ -127,7 +134,7 @@ export function useEmployeeGoalSheetData() {
       return 'supabase-empty'
     }
     return 'loading'
-  }, [canFetch, isLoading, fetchError, sheetData, fetchAttempted])
+  }, [activeCycle, canFetch, isLoading, fetchError, sheetData, fetchAttempted])
 
   const goals =
     dataSource === 'supabase'

@@ -20,6 +20,8 @@ const uomLabels: Record<string, string> = {
   'numeric-higher-better': 'Higher Better',
   'numeric-lower-better': 'Lower Better',
   'percentage': 'Percentage',
+  'percentage-higher-better': 'Percentage - Higher Better',
+  'percentage-lower-better': 'Percentage - Lower Better',
   'timeline': 'Timeline',
   'zero-based': 'Zero Based',
 }

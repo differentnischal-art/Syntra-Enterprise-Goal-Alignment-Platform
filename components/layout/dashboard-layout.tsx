@@ -9,7 +9,6 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { AlertCircle, Menu, Layers, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { mockGoalCycle } from '@/lib/mock-data'
 import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import Link from 'next/link'
@@ -23,12 +22,12 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isAccessDeniedNotice, setIsAccessDeniedNotice] = useState(false)
-  // First Supabase slice: active cycle from DB when configured; mock fallback during migration.
-  const [activeGoalCycle, setActiveGoalCycle] = useState<GoalCycle>(mockGoalCycle)
+  const [activeGoalCycle, setActiveGoalCycle] = useState<GoalCycle | null>(null)
   const {
     liveProfile,
     isLoading: isProfileLoading,
     isUsingMockFallback,
+    error: profileError,
   } = useCurrentProfile()
   const effectiveRole = liveProfile?.role ?? role
 
@@ -78,6 +77,19 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
     )
   }
 
+  if (!isProfileLoading && !isUsingMockFallback && !liveProfile) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <Alert className="border-destructive/30 bg-destructive/5">
+          <AlertCircle className="h-4 w-4 text-destructive" />
+          <AlertDescription className="text-destructive">
+            {profileError ?? 'Profile unavailable. Please sign in again or contact Admin/HR.'}
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile Header */}
@@ -119,7 +131,9 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
                       <Clock className="h-3.5 w-3.5 text-primary" />
                     </div>
                     <div className="flex-1">
-                      <p className="text-xs font-medium text-sidebar-foreground">{activeGoalCycle.name}</p>
+                      <p className="text-xs font-medium text-sidebar-foreground">
+                        {activeGoalCycle?.name ?? 'No active cycle'}
+                      </p>
                       <p className="text-[10px] text-sidebar-foreground/50">Active Cycle</p>
                     </div>
                     <Badge variant="outline" className="border-success/30 bg-success/10 text-success text-[10px]">

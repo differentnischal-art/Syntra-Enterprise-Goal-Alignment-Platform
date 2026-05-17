@@ -29,6 +29,7 @@ import {
 } from '@/lib/data/check-ins'
 import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
 import { isRealUuid } from '@/lib/data/goals'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { mockGoals, mockCheckIns, mockGoalCycle } from '@/lib/mock-data'
 import type { GoalCycle, GoalStatus, UnitOfMeasurement } from '@/lib/types'
 import {
@@ -43,6 +44,8 @@ const uomLabels: Record<string, string> = {
   'numeric-higher-better': 'Higher Better',
   'numeric-lower-better': 'Lower Better',
   percentage: 'Percentage',
+  'percentage-higher-better': 'Percentage - Higher Better',
+  'percentage-lower-better': 'Percentage - Lower Better',
   timeline: 'Timeline',
   'zero-based': 'Zero Based',
 }
@@ -100,9 +103,11 @@ function createLiveEntries(rows: EmployeeQuarterlyCheckInRow[]) {
 export default function QuarterlyCheckInsPage() {
   const { liveProfile } = useCurrentProfile()
   const [activeQuarter, setActiveQuarter] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>('Q4')
-  const [activeCycle, setActiveCycle] = useState<GoalCycle>(mockGoalCycle)
+  const [activeCycle, setActiveCycle] = useState<GoalCycle | null>(
+    isSupabaseConfigured() ? null : mockGoalCycle
+  )
   const [checkInData, setCheckInData] = useState<Record<string, CheckInEntry>>(() =>
-    createMockEntries('Q4')
+    isSupabaseConfigured() ? {} : createMockEntries('Q4')
   )
   const [liveRows, setLiveRows] = useState<EmployeeQuarterlyCheckInRow[] | null>(null)
   const [liveGoalSheetId, setLiveGoalSheetId] = useState<string | null>(null)
@@ -116,6 +121,7 @@ export default function QuarterlyCheckInsPage() {
   const canFetchLive = Boolean(
     liveProfile &&
       isRealUuid(liveProfile.id) &&
+      activeCycle &&
       isRealUuid(activeCycle.id)
   )
 
@@ -135,22 +141,23 @@ export default function QuarterlyCheckInsPage() {
     setSubmitError(null)
     setSubmitMessage(null)
 
-    if (!canFetchLive || !liveProfile) {
+    if (!canFetchLive || !liveProfile || !activeCycle) {
       setLiveRows(null)
       setLiveGoalSheetId(null)
-      setCheckInData(createMockEntries(activeQuarter))
+      setCheckInData(isSupabaseConfigured() ? {} : createMockEntries(activeQuarter))
       setIsLoading(false)
       return
     }
 
     let cancelled = false
     const employeeProfile = liveProfile
+    const cycle = activeCycle
 
     async function loadCheckIns() {
       setIsLoading(true)
       const result = await getEmployeeQuarterlyCheckIns(
         employeeProfile.id,
-        activeCycle.id,
+        cycle.id,
         dbQuarter
       )
 
@@ -163,7 +170,7 @@ export default function QuarterlyCheckInsPage() {
       } else {
         setLiveRows(null)
         setLiveGoalSheetId(null)
-        setCheckInData(createMockEntries(activeQuarter))
+        setCheckInData(isSupabaseConfigured() ? {} : createMockEntries(activeQuarter))
       }
 
       setIsLoading(false)
@@ -174,14 +181,22 @@ export default function QuarterlyCheckInsPage() {
     return () => {
       cancelled = true
     }
-  }, [activeCycle.id, activeQuarter, canFetchLive, dbQuarter, liveProfile])
+  }, [activeCycle, activeQuarter, canFetchLive, dbQuarter, liveProfile])
 
   const isLiveMode = Boolean(liveRows && liveGoalSheetId && liveProfile)
-  const sourceLabel = isLiveMode ? 'Live Supabase check-ins' : 'Demo check-ins'
+  const sourceLabel = isLiveMode
+    ? 'Live Supabase check-ins'
+    : isSupabaseConfigured()
+      ? 'No live check-ins yet'
+      : 'Demo check-ins'
 
   const displayRows = useMemo(() => {
     if (liveRows) {
       return liveRows
+    }
+
+    if (isSupabaseConfigured()) {
+      return []
     }
 
     return mockGoals.map((goal) => {
@@ -238,7 +253,11 @@ export default function QuarterlyCheckInsPage() {
       return
     }
 
-    if (!isLiveMode || !liveProfile || !liveGoalSheetId) {
+    if (!isLiveMode || !liveProfile || !liveGoalSheetId || !activeCycle) {
+      if (isSupabaseConfigured()) {
+        setSubmitError('No approved live goal sheet is available for this quarter.')
+        return
+      }
       setSubmitMessage('Check-in submitted locally for demo.')
       return
     }
@@ -286,7 +305,7 @@ export default function QuarterlyCheckInsPage() {
     <DashboardLayout role="employee">
       <DashboardHeader
         title="Quarterly Check-ins"
-        subtitle={activeCycle.name}
+        subtitle={activeCycle?.name ?? 'No active cycle'}
       />
 
       <div className="p-6 space-y-6">

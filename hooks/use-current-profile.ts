@@ -67,10 +67,10 @@ export function useCurrentProfile() {
 
   const [liveProfile, setLiveProfile] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isUsingMockFallback, setIsUsingMockFallback] = useState(true)
+  const [isUsingMockFallback, setIsUsingMockFallback] = useState(!isSupabaseConfigured())
   const [error, setError] = useState<string | null>(null)
 
-  const profile = liveProfile ?? mockFallback
+  const profile = liveProfile ?? (!isSupabaseConfigured() ? mockFallback : null)
   const hasRoleMismatch = Boolean(
     liveProfile && liveProfile.role !== workspaceRole
   )
@@ -101,13 +101,14 @@ export function useCurrentProfile() {
           setIsUsingMockFallback(false)
         } else {
           setLiveProfile(null)
-          setIsUsingMockFallback(true)
+          setIsUsingMockFallback(false)
+          setError('No profile found for the signed-in user.')
         }
       } catch (err) {
         if (cancelled) return
         setError(err instanceof Error ? err.message : 'Failed to load profile')
         setLiveProfile(null)
-        setIsUsingMockFallback(true)
+        setIsUsingMockFallback(false)
       } finally {
         if (!cancelled) {
           setIsLoading(false)

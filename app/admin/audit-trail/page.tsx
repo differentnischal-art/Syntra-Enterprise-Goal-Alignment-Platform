@@ -25,6 +25,7 @@ import {
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import { getAuditLogs, type AuditLogRow } from '@/lib/data/audit-logs'
 import { mockAuditLogs } from '@/lib/mock-data'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import type { UserRole } from '@/lib/types'
 import {
   ClipboardList,
@@ -122,8 +123,10 @@ export default function AuditTrailPage() {
     }
   }, [liveProfile])
 
-  const auditLogs = liveAuditLogs ?? mockAuditLogs.map(mapMockAuditLog)
-  const isLiveMode = liveAuditLogs !== null
+  const auditLogs = isSupabaseConfigured()
+    ? liveAuditLogs ?? []
+    : mockAuditLogs.map(mapMockAuditLog)
+  const isLiveMode = isSupabaseConfigured()
 
   const filteredLogs = useMemo(() => {
     return auditLogs.filter((log) => {

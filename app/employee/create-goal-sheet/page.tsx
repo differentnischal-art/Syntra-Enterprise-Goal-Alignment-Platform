@@ -17,11 +17,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { mockEmployeeUser, mockGoalCycle, thrustAreas } from '@/lib/mock-data'
+import { mockGoalCycle } from '@/lib/mock-data'
 import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
-import { saveGoalSheetDraft, submitGoalSheet } from '@/lib/data/goal-sheets'
+import {
+  getCurrentEmployeeGoalSheetWithGoals,
+  saveGoalSheetDraft,
+  submitGoalSheet,
+} from '@/lib/data/goal-sheets'
 import type { GoalSheetGoalInput } from '@/lib/data/goals'
 import { isRealUuid } from '@/lib/data/goals'
+import { getThrustAreaNames } from '@/lib/data/reference-data'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import type { GoalCycle, UnitOfMeasurement } from '@/lib/types'
@@ -43,16 +48,18 @@ interface DraftGoal {
   thrustArea: string
   unitOfMeasurement: UnitOfMeasurement
   target: string
+  targetDate: string
   weightage: string
 }
 
-const emptyGoal: () => DraftGoal = () => ({
-  id: `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+const emptyGoal = (id: string): DraftGoal => ({
+  id,
   title: '',
   description: '',
   thrustArea: '',
   unitOfMeasurement: 'numeric-higher-better',
   target: '',
+  targetDate: '',
   weightage: '',
 })
 
@@ -66,7 +73,8 @@ const steps = [
 const uomOptions = [
   { value: 'numeric-higher-better', label: 'Numeric - Higher is Better' },
   { value: 'numeric-lower-better', label: 'Numeric - Lower is Better' },
-  { value: 'percentage', label: 'Percentage' },
+  { value: 'percentage-higher-better', label: 'Percentage - Higher is Better' },
+  { value: 'percentage-lower-better', label: 'Percentage - Lower is Better' },
   { value: 'timeline', label: 'Timeline' },
   { value: 'zero-based', label: 'Zero Based' },
 ]
@@ -79,31 +87,75 @@ function toGoalInputs(goals: DraftGoal[]): GoalSheetGoalInput[] {
       description: g.description,
       thrustArea: g.thrustArea,
       unitOfMeasurement: g.unitOfMeasurement,
-      target: parseFloat(g.target) || 0,
+      target:
+        g.unitOfMeasurement === 'timeline' || g.unitOfMeasurement === 'zero-based'
+          ? 0
+          : parseFloat(g.target) || 0,
+      targetDate: g.unitOfMeasurement === 'timeline' ? g.targetDate : null,
       weightage: parseInt(g.weightage, 10) || 0,
     }))
 }
 
+function isPercentageUom(uom: UnitOfMeasurement) {
+  return (
+    uom === 'percentage' ||
+    uom === 'percentage-higher-better' ||
+    uom === 'percentage-lower-better'
+  )
+}
+
+function hasValidTarget(goal: DraftGoal, cycle: GoalCycle | null) {
+  if (goal.unitOfMeasurement === 'timeline') {
+    if (!goal.targetDate || Number.isNaN(Date.parse(goal.targetDate))) {
+      return false
+    }
+    if (!cycle) {
+      return true
+    }
+    return goal.targetDate >= cycle.startDate && goal.targetDate <= cycle.endDate
+  }
+
+  if (goal.unitOfMeasurement === 'zero-based') {
+    return goal.target === '0'
+  }
+
+  if (!goal.target.trim() || Number.isNaN(Number(goal.target))) {
+    return false
+  }
+
+  const target = Number(goal.target)
+  if (target < 0) {
+    return false
+  }
+
+  return !isPercentageUom(goal.unitOfMeasurement) || target <= 100
+}
+
 export default function CreateGoalSheetPage() {
-  const { liveProfile } = useCurrentProfile()
-  const [activeCycle, setActiveCycle] = useState<GoalCycle>(mockGoalCycle)
+  const { liveProfile, error: profileError } = useCurrentProfile()
+  const [activeCycle, setActiveCycle] = useState<GoalCycle | null>(
+    isSupabaseConfigured() ? null : mockGoalCycle
+  )
+  const [thrustAreaOptions, setThrustAreaOptions] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState(1)
-  const [goals, setGoals] = useState<DraftGoal[]>([emptyGoal()])
+  const [goals, setGoals] = useState<DraftGoal[]>([emptyGoal('draft-1')])
   const [isSubmitted, setIsSubmitted] = useState(false)
-  const [demoSubmitted, setDemoSubmitted] = useState(false)
+  const [nextDraftId, setNextDraftId] = useState(2)
   const [isSaving, setIsSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isLoadingSheet, setIsLoadingSheet] = useState(false)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const employeeId = liveProfile?.id
-  const managerId = liveProfile?.managerId ?? mockEmployeeUser.managerId
-  const managerName =
-    liveProfile?.managerName ?? mockEmployeeUser.managerName ?? 'Not assigned'
+  const managerId = liveProfile?.managerId ?? null
+  const managerName = liveProfile?.managerName ?? 'Not assigned'
   const canPersistToSupabase = Boolean(
     isSupabaseConfigured() &&
       liveProfile &&
       employeeId &&
+      managerId &&
+      activeCycle &&
       isRealUuid(activeCycle.id)
   )
 
@@ -119,7 +171,85 @@ export default function CreateGoalSheetPage() {
     }
   }, [])
 
-  const isReadOnly = isSubmitted || demoSubmitted
+  useEffect(() => {
+    if (
+      !isSupabaseConfigured() ||
+      !liveProfile ||
+      !activeCycle ||
+      !isRealUuid(liveProfile.id) ||
+      !isRealUuid(activeCycle.id)
+    ) {
+      return
+    }
+
+    let cancelled = false
+    const employeeProfile = liveProfile
+    const cycle = activeCycle
+    async function loadExistingSheet() {
+      setIsLoadingSheet(true)
+      const result = await getCurrentEmployeeGoalSheetWithGoals({
+        employeeId: employeeProfile.id,
+        cycleId: cycle.id,
+        employeeName: employeeProfile.name,
+        department: employeeProfile.department,
+        managerName: employeeProfile.managerName,
+        cycleName: cycle.name,
+      })
+
+      if (cancelled) return
+
+      if (result) {
+        setGoals(
+          result.goals.length > 0
+            ? result.goals.map((goal) => ({
+                id: goal.id,
+                title: goal.title,
+                description: goal.description,
+                thrustArea: goal.thrustArea === '—' ? '' : goal.thrustArea,
+                unitOfMeasurement: goal.unitOfMeasurement,
+                target:
+                  goal.unitOfMeasurement === 'timeline'
+                    ? ''
+                    : goal.unitOfMeasurement === 'zero-based'
+                      ? '0'
+                      : goal.target.toString(),
+                targetDate: goal.targetDate ?? '',
+                weightage: goal.weightage.toString(),
+              }))
+            : [emptyGoal('draft-1')]
+        )
+        setNextDraftId(Math.max(result.goals.length + 1, 2))
+        setIsSubmitted(!['draft', 'returned'].includes(result.goalSheet.status))
+        setCurrentStep(
+          result.goalSheet.status === 'draft' || result.goalSheet.status === 'returned'
+            ? 1
+            : 4
+        )
+      }
+
+      setIsLoadingSheet(false)
+    }
+
+    loadExistingSheet()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeCycle, liveProfile])
+
+  useEffect(() => {
+    let cancelled = false
+    getThrustAreaNames().then((areas) => {
+      if (!cancelled) {
+        setThrustAreaOptions(areas)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const isReadOnly = isSubmitted
 
   const totalWeightage = goals.reduce((sum, g) => sum + (parseInt(g.weightage, 10) || 0), 0)
   const goalsCount = goals.filter((g) => g.title.trim()).length
@@ -130,8 +260,14 @@ export default function CreateGoalSheetPage() {
     minWeightageBreach: goals.some(
       (g) => parseInt(g.weightage, 10) > 0 && parseInt(g.weightage, 10) < 10
     ),
-    incompleteGoals: goals.some(
-      (g) => g.title.trim() && (!g.thrustArea || !g.target || !g.weightage)
+    incompleteGoals: goals.some((g) => {
+      if (!g.title.trim()) {
+        return false
+      }
+      return !g.thrustArea || !g.weightage || !hasValidTarget(g, activeCycle)
+    }),
+    invalidTargets: goals.some(
+      (g) => g.title.trim() && !hasValidTarget(g, activeCycle)
     ),
   }
 
@@ -140,30 +276,56 @@ export default function CreateGoalSheetPage() {
     !validationErrors.maxGoalsExceeded &&
     !validationErrors.minWeightageBreach &&
     !validationErrors.incompleteGoals &&
+    !validationErrors.invalidTargets &&
     goalsCount >= 1
 
   const addGoal = () => {
     if (goals.length < 8 && !isReadOnly) {
-      setGoals([...goals, emptyGoal()])
+      setGoals((currentGoals) => [
+        ...currentGoals,
+        emptyGoal(`draft-${nextDraftId}`),
+      ])
+      setNextDraftId((current) => current + 1)
     }
   }
 
-  const removeGoal = (id: string) => {
-    if (goals.length > 1 && !isReadOnly) {
-      setGoals(goals.filter((g) => g.id !== id))
-    }
-  }
-
-  const updateGoal = (id: string, field: keyof DraftGoal, value: string) => {
+  const removeGoalAt = (goalIndex: number) => {
     if (isReadOnly) return
-    setGoals(goals.map((g) => (g.id === id ? { ...g, [field]: value } : g)))
+    setGoals((currentGoals) =>
+      currentGoals.length > 1
+        ? currentGoals.filter((_, index) => index !== goalIndex)
+        : currentGoals
+    )
+  }
+
+  const updateGoalAt = (
+    goalIndex: number,
+    field: keyof DraftGoal,
+    value: string
+  ) => {
+    if (isReadOnly) return
+    setGoals((currentGoals) =>
+      currentGoals.map((g, index) => {
+        if (index !== goalIndex) return g
+        if (field === 'unitOfMeasurement') {
+          const nextUom = value as UnitOfMeasurement
+          return {
+            ...g,
+            unitOfMeasurement: nextUom,
+            target: nextUom === 'zero-based' ? '0' : nextUom === 'timeline' ? '' : g.target,
+            targetDate: nextUom === 'timeline' ? g.targetDate : '',
+          }
+        }
+        return { ...g, [field]: value }
+      })
+    )
   }
 
   const handleSaveDraft = async () => {
     setErrorMessage(null)
     setStatusMessage(null)
 
-    if (canPersistToSupabase && employeeId) {
+    if (canPersistToSupabase && employeeId && activeCycle) {
       setIsSaving(true)
       try {
         const result = await saveGoalSheetDraft({
@@ -185,6 +347,21 @@ export default function CreateGoalSheetPage() {
       return
     }
 
+    if (isSupabaseConfigured()) {
+      if (!liveProfile) {
+        setErrorMessage(profileError ?? 'No profile found for this signed-in user.')
+        return
+      }
+      if (!activeCycle) {
+        setErrorMessage('No active goal cycle is configured.')
+        return
+      }
+      if (!managerId) {
+        setErrorMessage('No manager is assigned to your profile. Please contact Admin/HR.')
+        return
+      }
+    }
+
     setStatusMessage('Draft saved locally for demo.')
   }
 
@@ -197,7 +374,7 @@ export default function CreateGoalSheetPage() {
       return
     }
 
-    if (canPersistToSupabase && employeeId) {
+    if (canPersistToSupabase && employeeId && activeCycle) {
       setIsSubmitting(true)
       try {
         const result = await submitGoalSheet({
@@ -221,12 +398,26 @@ export default function CreateGoalSheetPage() {
       return
     }
 
-    setDemoSubmitted(true)
+    if (isSupabaseConfigured()) {
+      if (!liveProfile) {
+        setErrorMessage(profileError ?? 'No profile found for this signed-in user.')
+        return
+      }
+      if (!activeCycle) {
+        setErrorMessage('No active goal cycle is configured.')
+        return
+      }
+      if (!managerId) {
+        setErrorMessage('No manager is assigned to your profile. Please contact Admin/HR.')
+        return
+      }
+    }
+
     setCurrentStep(4)
     setStatusMessage('Goal sheet submitted locally for demo.')
   }
 
-  const statusBadge = isSubmitted || demoSubmitted ? (
+  const statusBadge = isSubmitted ? (
     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
       Pending Approval
     </Badge>
@@ -238,7 +429,7 @@ export default function CreateGoalSheetPage() {
 
   return (
     <DashboardLayout role="employee">
-      <DashboardHeader title="Create Goal Sheet" subtitle={activeCycle.name} />
+      <DashboardHeader title="Create Goal Sheet" subtitle={activeCycle?.name ?? 'No active cycle'} />
 
       <div className="p-6 space-y-6">
         {statusMessage && (
@@ -259,19 +450,25 @@ export default function CreateGoalSheetPage() {
           <div>
             <div className="flex items-center gap-3">
               {statusBadge}
-              <span className="text-sm text-muted-foreground">Cycle: {activeCycle.name}</span>
+              <span className="text-sm text-muted-foreground">
+                Cycle: {activeCycle?.name ?? 'No active cycle'}
+              </span>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               Manager: <span className="font-medium text-foreground">{managerName}</span>
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleSaveDraft} disabled={isReadOnly || isSaving}>
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={isReadOnly || isSaving || isLoadingSheet}
+            >
               <Save className="mr-2 h-4 w-4" />
               {isSaving ? 'Saving...' : 'Save Draft'}
             </Button>
             <Button
-              disabled={!isValid || isReadOnly || isSubmitting}
+              disabled={!isValid || isReadOnly || isSubmitting || isLoadingSheet}
               onClick={handleSubmit}
             >
               <Send className="mr-2 h-4 w-4" />
@@ -406,7 +603,7 @@ export default function CreateGoalSheetPage() {
 
         <div className="space-y-4">
           {goals.map((goal, index) => (
-            <Card key={goal.id} className="border-border/60">
+            <Card key={`${goal.id}-${index}`} className="border-border/60">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold">Goal {index + 1}</CardTitle>
@@ -415,7 +612,7 @@ export default function CreateGoalSheetPage() {
                       variant="ghost"
                       size="sm"
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => removeGoal(goal.id)}
+                      onClick={() => removeGoalAt(index)}
                     >
                       <Trash2 className="h-4 w-4 mr-1" />
                       Remove
@@ -431,7 +628,7 @@ export default function CreateGoalSheetPage() {
                       id={`title-${goal.id}`}
                       placeholder="e.g., Improve API response time by 40%"
                       value={goal.title}
-                      onChange={(e) => updateGoal(goal.id, 'title', e.target.value)}
+                      onChange={(e) => updateGoalAt(index, 'title', e.target.value)}
                       disabled={isReadOnly}
                     />
                   </div>
@@ -439,14 +636,14 @@ export default function CreateGoalSheetPage() {
                     <Label htmlFor={`thrust-${goal.id}`}>Thrust Area *</Label>
                     <Select
                       value={goal.thrustArea}
-                      onValueChange={(value) => updateGoal(goal.id, 'thrustArea', value)}
+                      onValueChange={(value) => updateGoalAt(index, 'thrustArea', value)}
                       disabled={isReadOnly}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Select thrust area" />
                       </SelectTrigger>
                       <SelectContent>
-                        {thrustAreas.map((area) => (
+                        {thrustAreaOptions.map((area) => (
                           <SelectItem key={area} value={area}>
                             {area}
                           </SelectItem>
@@ -462,7 +659,7 @@ export default function CreateGoalSheetPage() {
                     id={`desc-${goal.id}`}
                     placeholder="Describe the goal and success criteria..."
                     value={goal.description}
-                    onChange={(e) => updateGoal(goal.id, 'description', e.target.value)}
+                    onChange={(e) => updateGoalAt(index, 'description', e.target.value)}
                     rows={2}
                     disabled={isReadOnly}
                   />
@@ -474,7 +671,7 @@ export default function CreateGoalSheetPage() {
                     <Select
                       value={goal.unitOfMeasurement}
                       onValueChange={(value) =>
-                        updateGoal(goal.id, 'unitOfMeasurement', value as UnitOfMeasurement)
+                        updateGoalAt(index, 'unitOfMeasurement', value as UnitOfMeasurement)
                       }
                       disabled={isReadOnly}
                     >
@@ -492,14 +689,44 @@ export default function CreateGoalSheetPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor={`target-${goal.id}`}>Target *</Label>
-                    <Input
-                      id={`target-${goal.id}`}
-                      type="number"
-                      placeholder="e.g., 40"
-                      value={goal.target}
-                      onChange={(e) => updateGoal(goal.id, 'target', e.target.value)}
-                      disabled={isReadOnly}
-                    />
+                    {goal.unitOfMeasurement === 'timeline' ? (
+                      <Input
+                        id={`target-${goal.id}`}
+                        type="date"
+                        min={activeCycle?.startDate}
+                        max={activeCycle?.endDate}
+                        value={goal.targetDate}
+                        onChange={(e) => updateGoalAt(index, 'targetDate', e.target.value)}
+                        disabled={isReadOnly}
+                        className={!hasValidTarget(goal, activeCycle) && goal.title.trim() ? 'border-destructive' : ''}
+                      />
+                    ) : (
+                      <Input
+                        id={`target-${goal.id}`}
+                        type="number"
+                        placeholder={goal.unitOfMeasurement === 'zero-based' ? '0' : 'e.g., 40'}
+                        min={0}
+                        max={isPercentageUom(goal.unitOfMeasurement) ? 100 : undefined}
+                        value={goal.unitOfMeasurement === 'zero-based' ? '0' : goal.target}
+                        onChange={(e) => updateGoalAt(index, 'target', e.target.value)}
+                        disabled={isReadOnly || goal.unitOfMeasurement === 'zero-based'}
+                        readOnly={goal.unitOfMeasurement === 'zero-based'}
+                        className={!hasValidTarget(goal, activeCycle) && goal.title.trim() ? 'border-destructive' : ''}
+                      />
+                    )}
+                    {goal.title.trim() && !hasValidTarget(goal, activeCycle) && (
+                      <p className="text-xs text-destructive">
+                        {goal.unitOfMeasurement === 'timeline'
+                          ? activeCycle
+                            ? `Choose a date within ${activeCycle.startDate} and ${activeCycle.endDate}.`
+                            : 'Choose a valid target date.'
+                          : goal.unitOfMeasurement === 'zero-based'
+                            ? 'Zero-based goals must use target 0.'
+                            : isPercentageUom(goal.unitOfMeasurement)
+                              ? 'Percentage targets must be between 0 and 100.'
+                              : 'Target cannot be negative.'}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor={`weight-${goal.id}`}>Weightage % *</Label>
@@ -510,7 +737,7 @@ export default function CreateGoalSheetPage() {
                       min={10}
                       max={100}
                       value={goal.weightage}
-                      onChange={(e) => updateGoal(goal.id, 'weightage', e.target.value)}
+                      onChange={(e) => updateGoalAt(index, 'weightage', e.target.value)}
                       disabled={isReadOnly}
                       className={
                         parseInt(goal.weightage, 10) > 0 && parseInt(goal.weightage, 10) < 10

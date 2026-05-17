@@ -27,6 +27,7 @@ export type GoalSheetGoalInput = {
   thrustArea: string
   unitOfMeasurement: UnitOfMeasurement
   target: number
+  targetDate?: string | null
   weightage: number
 }
 
@@ -34,6 +35,8 @@ type DbUomType =
   | 'numeric_higher_better'
   | 'numeric_lower_better'
   | 'percentage'
+  | 'percentage_higher_better'
+  | 'percentage_lower_better'
   | 'timeline'
   | 'zero_based'
 
@@ -49,6 +52,7 @@ export type DbGoalRow = {
   description: string | null
   uom_type: string
   target: number
+  target_date: string | null
   weightage: number
   status: DbGoalStatus
   approval_status: DbApprovalStatus
@@ -90,6 +94,8 @@ const UOM_TO_DB: Record<UnitOfMeasurement, DbUomType> = {
   'numeric-higher-better': 'numeric_higher_better',
   'numeric-lower-better': 'numeric_lower_better',
   percentage: 'percentage',
+  'percentage-higher-better': 'percentage_higher_better',
+  'percentage-lower-better': 'percentage_lower_better',
   timeline: 'timeline',
   'zero-based': 'zero_based',
 }
@@ -97,7 +103,9 @@ const UOM_TO_DB: Record<UnitOfMeasurement, DbUomType> = {
 const UOM_FROM_DB: Record<DbUomType, UnitOfMeasurement> = {
   numeric_higher_better: 'numeric-higher-better',
   numeric_lower_better: 'numeric-lower-better',
-  percentage: 'percentage',
+  percentage: 'percentage-higher-better',
+  percentage_higher_better: 'percentage-higher-better',
+  percentage_lower_better: 'percentage-lower-better',
   timeline: 'timeline',
   zero_based: 'zero-based',
 }
@@ -196,6 +204,7 @@ export function mapGoalRowToGoal(
     thrustArea: thrustAreaNameFromRow(row.thrust_areas),
     unitOfMeasurement: mapUomFromDb(row.uom_type),
     target: Number(row.target),
+    targetDate: row.target_date,
     weightage: Number(row.weightage),
     status: mapGoalStatusFromDb(row.status),
     approvalStatus: mapApprovalStatusFromDb(row.approval_status),
@@ -305,6 +314,7 @@ export async function insertGoalsForSheet(
       description: goal.description.trim() || null,
       uom_type: mapUomToDb(goal.unitOfMeasurement),
       target: goal.target,
+      target_date: goal.targetDate ?? null,
       weightage: goal.weightage,
       status: 'not_started',
       approval_status: approvalStatus,

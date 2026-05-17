@@ -8,11 +8,16 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { mockUser } from '@/lib/mock-data'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
 import { User, Mail, Building2, Shield } from 'lucide-react'
 
 export default function EmployeeProfilePage() {
-  const initials = mockUser.name
+  const { profile } = useCurrentProfile()
+  const displayName = profile?.name ?? 'Profile unavailable'
+  const displayEmail = profile?.email ?? '—'
+  const displayDepartment = profile?.department ?? '—'
+  const displayRole = profile?.role ?? 'employee'
+  const initials = displayName
     .split(' ')
     .map((n) => n[0])
     .join('')
@@ -35,13 +40,13 @@ export default function EmployeeProfilePage() {
                 </AvatarFallback>
               </Avatar>
               <div>
-                <h3 className="text-xl font-semibold">{mockUser.name}</h3>
-                <p className="text-muted-foreground">{mockUser.email}</p>
+                <h3 className="text-xl font-semibold">{displayName}</h3>
+                <p className="text-muted-foreground">{displayEmail}</p>
                 <Badge
                   variant="outline"
                   className="mt-2 border-primary/30 bg-primary/5 text-primary"
                 >
-                  Employee
+                  {displayRole.charAt(0).toUpperCase() + displayRole.slice(1)}
                 </Badge>
               </div>
             </div>
@@ -52,7 +57,7 @@ export default function EmployeeProfilePage() {
                   <User className="h-4 w-4 text-muted-foreground" />
                   Full Name
                 </Label>
-                <Input id="name" value={mockUser.name} disabled />
+                <Input id="name" value={displayName} disabled />
               </div>
 
               <div className="space-y-2">
@@ -60,7 +65,7 @@ export default function EmployeeProfilePage() {
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   Email Address
                 </Label>
-                <Input id="email" value={mockUser.email} disabled />
+                <Input id="email" value={displayEmail} disabled />
               </div>
 
               <div className="space-y-2">
@@ -68,7 +73,7 @@ export default function EmployeeProfilePage() {
                   <Building2 className="h-4 w-4 text-muted-foreground" />
                   Department
                 </Label>
-                <Input id="department" value={mockUser.department} disabled />
+                <Input id="department" value={displayDepartment} disabled />
               </div>
 
               <div className="space-y-2">
@@ -76,7 +81,11 @@ export default function EmployeeProfilePage() {
                   <Shield className="h-4 w-4 text-muted-foreground" />
                   Role
                 </Label>
-                <Input id="role" value="Employee" disabled />
+                <Input
+                  id="role"
+                  value={displayRole.charAt(0).toUpperCase() + displayRole.slice(1)}
+                  disabled
+                />
               </div>
             </div>
 

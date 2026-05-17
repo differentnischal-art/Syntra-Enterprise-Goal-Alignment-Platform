@@ -5,6 +5,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
+import { getCurrentUser } from '@/lib/data/auth'
 import type { User, UserRole } from '@/lib/types'
 
 export type ProfileUpsertInput = {
@@ -142,6 +143,36 @@ export async function getCurrentProfile(): Promise<User | null> {
     console.error('[getCurrentProfile] unexpected error:', err)
     return null
   }
+}
+
+export async function requireProfile(): Promise<{
+  profile: User | null
+  error: string | null
+}> {
+  if (!isSupabaseConfigured()) {
+    return {
+      profile: null,
+      error: 'Supabase is not configured.',
+    }
+  }
+
+  const authUser = await getCurrentUser()
+  if (!authUser) {
+    return {
+      profile: null,
+      error: 'You must be signed in to continue.',
+    }
+  }
+
+  const profile = await getCurrentProfile()
+  if (!profile) {
+    return {
+      profile: null,
+      error: 'No profile was found for this signed-in user. Please contact Admin/HR.',
+    }
+  }
+
+  return { profile, error: null }
 }
 
 export async function getProfileById(profileId: string): Promise<User | null> {

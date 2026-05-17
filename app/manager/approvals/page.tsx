@@ -26,10 +26,12 @@ import {
   approveGoalSheet,
   getManagerGoalSheetForReview,
   returnGoalSheetForRework,
+  saveManagerGoalEdits,
   type ApprovalReviewEntry,
   type ManagerGoalSheetReview,
   type ManagerPendingApproval,
 } from '@/lib/data/manager-approvals'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import type { ApprovalStatus, Goal, GoalSheetStatus } from '@/lib/types'
 import {
   CheckCircle2,
@@ -47,6 +49,8 @@ const uomLabels: Record<string, string> = {
   'numeric-higher-better': 'Higher Better',
   'numeric-lower-better': 'Lower Better',
   percentage: 'Percentage',
+  'percentage-higher-better': 'Percentage - Higher Better',
+  'percentage-lower-better': 'Percentage - Lower Better',
   timeline: 'Timeline',
   'zero-based': 'Zero Based',
 }
@@ -54,6 +58,12 @@ const uomLabels: Record<string, string> = {
 type DemoSheetState = {
   status: 'pending' | 'approved' | 'returned'
   reviews: ApprovalReviewEntry[]
+}
+
+type GoalEditDraft = {
+  target: string
+  targetDate: string
+  weightage: string
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -79,7 +89,9 @@ export default function ManagerApprovalsPage() {
   const useSupabase = dataSource === 'supabase'
 
   const [selectedGoalSheetId, setSelectedGoalSheetId] = useState<string | null>(null)
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>('u4')
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(
+    isSupabaseConfigured() ? null : 'u4'
+  )
   const [reviewDetail, setReviewDetail] = useState<ManagerGoalSheetReview | null>(null)
   const [comments, setComments] = useState('')
   const [commentError, setCommentError] = useState<string | null>(null)
@@ -87,6 +99,7 @@ export default function ManagerApprovalsPage() {
   const [isActing, setIsActing] = useState(false)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [warningMessage, setWarningMessage] = useState<string | null>(null)
+  const [goalEdits, setGoalEdits] = useState<Record<string, GoalEditDraft>>({})
   const [demoSheetStates, setDemoSheetStates] = useState<Record<string, DemoSheetState>>({})
   const [removedDemoIds, setRemovedDemoIds] = useState<Set<string>>(new Set())
 
@@ -128,6 +141,31 @@ export default function ManagerApprovalsPage() {
     [pendingSheets, selectedGoalSheetId, reviewDetail]
   )
 
+  useEffect(() => {
+    if (!selectedSupabaseSheet) {
+      setGoalEdits({})
+      return
+    }
+
+    setGoalEdits(
+      Object.fromEntries(
+        selectedSupabaseSheet.goals.map((goal) => [
+          goal.id,
+          {
+            target:
+              goal.unitOfMeasurement === 'timeline'
+                ? ''
+                : goal.unitOfMeasurement === 'zero-based'
+                  ? '0'
+                  : goal.target.toString(),
+            targetDate: goal.targetDate ?? '',
+            weightage: goal.weightage.toString(),
+          },
+        ])
+      )
+    )
+  }, [selectedSupabaseSheet])
+
   const selectedMemberData = mockTeamMembers.find((m) => m.id === selectedMemberId)
   const demoState = selectedMemberId ? demoSheetStates[selectedMemberId] : undefined
   const demoStatus: ApprovalStatus =
@@ -164,6 +202,62 @@ export default function ManagerApprovalsPage() {
   const inputsDisabled = isResolved || isActing
 
   const pendingListCount = useSupabase ? pendingSheets.length : demoPending.length
+
+  const updateGoalEdit = (
+    goalId: string,
+    field: keyof GoalEditDraft,
+    value: string
+  ) => {
+    setGoalEdits((current) => ({
+      ...current,
+      [goalId]: {
+        ...(current[goalId] ?? { target: '', targetDate: '', weightage: '' }),
+        [field]: value,
+      },
+    }))
+  }
+
+  const handleSaveManagerEdits = async () => {
+    setActionError(null)
+    setSuccessMessage(null)
+    setWarningMessage(null)
+
+    if (!useSupabase || !selectedGoalSheetId || !liveProfile || !selectedSupabaseSheet) {
+      return
+    }
+
+    setIsActing(true)
+    const result = await saveManagerGoalEdits(
+      selectedGoalSheetId,
+      liveProfile.id,
+      selectedSupabaseSheet.goals.map((goal) => {
+        const edit = goalEdits[goal.id]
+        return {
+          goalId: goal.id,
+          target:
+            goal.unitOfMeasurement === 'timeline' ||
+            goal.unitOfMeasurement === 'zero-based'
+              ? 0
+              : Number(edit?.target ?? goal.target),
+          targetDate:
+            goal.unitOfMeasurement === 'timeline'
+              ? edit?.targetDate ?? goal.targetDate ?? null
+              : null,
+          weightage: Number(edit?.weightage ?? goal.weightage),
+        }
+      })
+    )
+    setIsActing(false)
+
+    if (result.error || !result.success) {
+      setActionError(result.error ?? 'Failed to save manager edits')
+      return
+    }
+
+    setSuccessMessage('Manager edits saved.')
+    await loadReviewDetail(selectedGoalSheetId)
+    await reloadPending()
+  }
 
   const handleApprove = async () => {
     setCommentError(null)
@@ -317,7 +411,7 @@ export default function ManagerApprovalsPage() {
           <Alert className="border-destructive/30 bg-destructive/5">
             <AlertTriangle className="h-4 w-4 text-destructive" />
             <AlertDescription className="text-destructive">
-              {fetchError}. Showing demo approvals.
+              {fetchError}
             </AlertDescription>
           </Alert>
         )}
@@ -590,15 +684,45 @@ export default function ManagerApprovalsPage() {
                                   {uomLabels[goal.unitOfMeasurement]}
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">
-                                  {goal.target}
+                                  {goal.unitOfMeasurement === 'timeline'
+                                    ? goal.targetDate ?? '—'
+                                    : goal.target}
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <Input
-                                    type="number"
-                                    defaultValue={goal.target}
-                                    disabled={inputsDisabled}
-                                    className="h-8 w-20 text-right ml-auto"
-                                  />
+                                  {goal.unitOfMeasurement === 'timeline' ? (
+                                    <Input
+                                      type="date"
+                                      value={goalEdits[goal.id]?.targetDate ?? ''}
+                                      onChange={(event) =>
+                                        updateGoalEdit(goal.id, 'targetDate', event.target.value)
+                                      }
+                                      disabled={inputsDisabled}
+                                      className="h-8 w-36 ml-auto"
+                                    />
+                                  ) : (
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      max={
+                                        goal.unitOfMeasurement === 'percentage' ||
+                                        goal.unitOfMeasurement === 'percentage-higher-better' ||
+                                        goal.unitOfMeasurement === 'percentage-lower-better'
+                                          ? 100
+                                          : undefined
+                                      }
+                                      value={
+                                        goal.unitOfMeasurement === 'zero-based'
+                                          ? '0'
+                                          : goalEdits[goal.id]?.target ?? ''
+                                      }
+                                      onChange={(event) =>
+                                        updateGoalEdit(goal.id, 'target', event.target.value)
+                                      }
+                                      disabled={inputsDisabled || goal.unitOfMeasurement === 'zero-based'}
+                                      readOnly={goal.unitOfMeasurement === 'zero-based'}
+                                      className="h-8 w-20 text-right ml-auto"
+                                    />
+                                  )}
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">
                                   {goal.weightage}%
@@ -606,7 +730,12 @@ export default function ManagerApprovalsPage() {
                                 <TableCell className="text-right">
                                   <Input
                                     type="number"
-                                    defaultValue={goal.weightage}
+                                    min={10}
+                                    max={100}
+                                    value={goalEdits[goal.id]?.weightage ?? ''}
+                                    onChange={(event) =>
+                                      updateGoalEdit(goal.id, 'weightage', event.target.value)
+                                    }
                                     disabled={inputsDisabled}
                                     className="h-8 w-20 text-right ml-auto"
                                   />
@@ -641,6 +770,16 @@ export default function ManagerApprovalsPage() {
                         <p className="text-sm text-destructive">{commentError}</p>
                       )}
                       <div className="flex gap-3">
+                        {useSupabase && !inputsDisabled && (
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={handleSaveManagerEdits}
+                            disabled={isActing}
+                          >
+                            Save Review Edits
+                          </Button>
+                        )}
                         <Button
                           className="flex-1 bg-success hover:bg-success/90"
                           onClick={handleApprove}

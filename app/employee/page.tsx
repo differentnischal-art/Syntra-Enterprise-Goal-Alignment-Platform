@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -10,6 +11,9 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StatusBadge, SharedBadge } from '@/components/goals/status-badge'
 import { mockActivityLogs } from '@/lib/mock-data'
+import { getAuditLogs, type AuditLogRow } from '@/lib/data/audit-logs'
+import { isRealUuid } from '@/lib/data/goals'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { useEmployeeGoalSheetData } from '@/hooks/use-employee-goal-sheet-data'
 import type { GoalSheetStatus } from '@/lib/types'
 import {
@@ -39,6 +43,57 @@ const lifecycleStages = [
   { id: 'q4', label: 'Q4', status: 'current' },
 ]
 
+type DisplayActivity = {
+  id: string
+  type:
+    | 'goal-approved'
+    | 'goal-returned'
+    | 'checkin-submitted'
+    | 'shared-goal-pushed'
+    | 'comment-added'
+    | 'other'
+  description: string
+  timestamp: string
+}
+
+function mapMockActivity(activity: (typeof mockActivityLogs)[number]): DisplayActivity {
+  return {
+    id: activity.id,
+    type:
+      activity.type === 'goal-approved' ||
+      activity.type === 'goal-returned' ||
+      activity.type === 'checkin-submitted' ||
+      activity.type === 'shared-goal-pushed' ||
+      activity.type === 'comment-added'
+        ? activity.type
+        : 'other',
+    description: activity.description,
+    timestamp: activity.timestamp,
+  }
+}
+
+function mapAuditActivity(row: AuditLogRow): DisplayActivity {
+  const type =
+    row.actionType === 'goal_approved'
+      ? 'goal-approved'
+      : row.actionType === 'goal_returned'
+        ? 'goal-returned'
+        : row.actionType === 'checkin_submitted'
+          ? 'checkin-submitted'
+          : row.actionType === 'comment_added'
+            ? 'comment-added'
+            : row.actionType === 'shared_goal_assigned'
+              ? 'shared-goal-pushed'
+              : 'other'
+
+  return {
+    id: row.id,
+    type,
+    description: row.description ?? `${row.actorName} ${row.actionType.replace(/_/g, ' ')}`,
+    timestamp: row.createdAt,
+  }
+}
+
 function sheetStatusForBadge(
   status: GoalSheetStatus | undefined
 ): GoalSheetStatus {
@@ -57,8 +112,31 @@ export default function EmployeeDashboard() {
     fetchError,
     sourceLabel,
   } = useEmployeeGoalSheetData()
+  const [liveActivityLogs, setLiveActivityLogs] = useState<AuditLogRow[] | null>(null)
 
-  const displayName = profile.name.split(' ')[0]
+  useEffect(() => {
+    if (
+      !isSupabaseConfigured() ||
+      !profile ||
+      !isRealUuid(profile.id)
+    ) {
+      setLiveActivityLogs(null)
+      return
+    }
+
+    let cancelled = false
+    getAuditLogs({ employeeId: profile.id }).then((logs) => {
+      if (!cancelled) {
+        setLiveActivityLogs(logs)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [profile])
+
+  const displayName = profile?.name.split(' ')[0] ?? 'Employee'
   const maxGoals = 8
   const totalGoals = goals.length
   const overallAchievement =
@@ -70,9 +148,12 @@ export default function EmployeeDashboard() {
   const nextCheckIn = 'Nov 30, 2025'
   const sheetStatus = goalSheet?.status
   const showEmptyState = dataSource === 'supabase-empty'
+  const activityLogs: DisplayActivity[] = isSupabaseConfigured()
+    ? (liveActivityLogs ?? []).map(mapAuditActivity)
+    : mockActivityLogs.map(mapMockActivity)
 
   const welcomeMessage = showEmptyState
-    ? `No goal sheet created yet for ${activeCycle.name}. Create your goal sheet to begin.`
+    ? `No goal sheet created yet for ${activeCycle?.name ?? 'the active cycle'}. Create your goal sheet to begin.`
     : sheetStatus === 'pending-approval' || sheetStatus === 'submitted'
       ? 'Your goal sheet is pending manager approval.'
       : sheetStatus === 'draft' || sheetStatus === 'returned'
@@ -83,7 +164,7 @@ export default function EmployeeDashboard() {
     <DashboardLayout role="employee">
       <DashboardHeader
         title="Dashboard"
-        subtitle={`${activeCycle.name} - ${profile.department}`}
+        subtitle={`${activeCycle?.name ?? 'No active cycle'} - ${profile?.department ?? 'Profile unavailable'}`}
       />
 
       <div className="p-6 space-y-6">
@@ -98,7 +179,7 @@ export default function EmployeeDashboard() {
           <Alert className="border-destructive/30 bg-destructive/5">
             <AlertCircle className="h-4 w-4 text-destructive" />
             <AlertDescription className="text-destructive">
-              {fetchError}. Showing demo goal data.
+              {fetchError}
             </AlertDescription>
           </Alert>
         )}
@@ -265,7 +346,7 @@ export default function EmployeeDashboard() {
                 <div>
                   <CardTitle className="text-base font-semibold">My Goals</CardTitle>
                   <CardDescription>
-                    {totalGoals} goals for {activeCycle.name}
+                    {totalGoals} goals for {activeCycle?.name ?? 'the active cycle'}
                   </CardDescription>
                 </div>
                 <Button variant="outline" size="sm" asChild>
@@ -283,7 +364,7 @@ export default function EmployeeDashboard() {
                       No goal sheet created yet
                     </p>
                     <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                      Create your {activeCycle.name} goal sheet to begin.
+                      Create your {activeCycle?.name ?? 'active cycle'} goal sheet to begin.
                     </p>
                     <Button className="mt-4" asChild>
                       <Link href="/employee/create-goal-sheet">Create Goal Sheet</Link>
@@ -338,7 +419,7 @@ export default function EmployeeDashboard() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="divide-y divide-border">
-                  {mockActivityLogs.slice(0, 5).map((activity) => (
+                  {activityLogs.slice(0, 5).map((activity) => (
                     <div key={activity.id} className="flex items-start gap-3 px-6 py-3">
                       <div
                         className={`

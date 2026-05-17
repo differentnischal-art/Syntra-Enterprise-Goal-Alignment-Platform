@@ -15,6 +15,7 @@ import {
 } from '@/lib/data/notifications'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import { isRealUuid } from '@/lib/data/goals'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { Bell, CheckCircle2 } from 'lucide-react'
 
 const demoNotifications: NotificationRow[] = [
@@ -65,8 +66,10 @@ export default function EmployeeNotificationsPage() {
     }
   }, [canFetchLive, liveProfile])
 
-  const notifications = liveNotifications ?? demoState
-  const isLiveMode = liveNotifications !== null
+  const notifications = isSupabaseConfigured()
+    ? liveNotifications ?? []
+    : demoState
+  const isLiveMode = isSupabaseConfigured()
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.isRead).length,
     [notifications]
@@ -98,6 +101,10 @@ export default function EmployeeNotificationsPage() {
       return
     }
 
+    if (isSupabaseConfigured()) {
+      return
+    }
+
     setDemoState((current) =>
       current.map((item) =>
         item.id === notification.id ? { ...item, isRead: true } : item
@@ -112,6 +119,10 @@ export default function EmployeeNotificationsPage() {
       setLiveNotifications((current) =>
         current?.map((notification) => ({ ...notification, isRead: true })) ?? current
       )
+      return
+    }
+
+    if (isSupabaseConfigured()) {
       return
     }
 

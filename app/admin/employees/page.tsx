@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,14 +15,33 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { mockEmployees } from '@/lib/mock-data'
+import { getProfilesByRole } from '@/lib/data/profiles'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { Search, UserPlus } from 'lucide-react'
-import { useState } from 'react'
+import type { User } from '@/lib/types'
 
 export default function AdminEmployeesPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [employees, setEmployees] = useState<User[]>([])
 
-  const filteredEmployees = mockEmployees.filter(
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      return
+    }
+
+    let cancelled = false
+    getProfilesByRole('employee').then((rows) => {
+      if (!cancelled) {
+        setEmployees(rows)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const filteredEmployees = employees.filter(
     (emp) =>
       emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       emp.department.toLowerCase().includes(searchQuery.toLowerCase())

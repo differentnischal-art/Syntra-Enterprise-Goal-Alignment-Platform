@@ -118,6 +118,86 @@ function computeTotals(goals: GoalSheetGoalInput[]) {
   }
 }
 
+async function validateTimelineTargetsWithinCycle(
+  cycleId: string,
+  goals: GoalSheetGoalInput[]
+): Promise<string | null> {
+  const timelineGoals = goals.filter((goal) => goal.unitOfMeasurement === 'timeline')
+  if (timelineGoals.length === 0) {
+    return null
+  }
+
+  const supabase = createClient()
+  if (!supabase) {
+    return 'Supabase client unavailable'
+  }
+
+  const { data, error } = await supabase
+    .from('goal_cycles')
+    .select('start_date, end_date')
+    .eq('id', cycleId)
+    .maybeSingle()
+
+  if (error) {
+    console.error('[validateTimelineTargetsWithinCycle] error:', error.message)
+    return 'Could not validate timeline target dates.'
+  }
+
+  if (!data) {
+    return 'Goal cycle not found.'
+  }
+
+  for (const goal of timelineGoals) {
+    if (
+      !goal.targetDate ||
+      goal.targetDate < data.start_date ||
+      goal.targetDate > data.end_date
+    ) {
+      return 'Timeline target dates must fall within the goal cycle.'
+    }
+  }
+
+  return null
+}
+
+export function validateGoalsForDraft(goals: GoalSheetGoalInput[]): string | null {
+  if (goals.length > 8) {
+    return 'Maximum 8 goals allowed.'
+  }
+
+  for (const goal of goals) {
+    if (goal.weightage < 0 || goal.weightage > 100) {
+      return 'Goal weightage must be between 0 and 100.'
+    }
+
+    if (goal.unitOfMeasurement === 'timeline') {
+      if (!goal.targetDate || Number.isNaN(Date.parse(goal.targetDate))) {
+        return 'Timeline goals require a valid target date.'
+      }
+      continue
+    }
+
+    if (!Number.isFinite(goal.target) || goal.target < 0) {
+      return 'Goal targets cannot be negative.'
+    }
+
+    if (
+      (goal.unitOfMeasurement === 'percentage' ||
+        goal.unitOfMeasurement === 'percentage-higher-better' ||
+        goal.unitOfMeasurement === 'percentage-lower-better') &&
+      goal.target > 100
+    ) {
+      return 'Percentage targets must be between 0 and 100.'
+    }
+
+    if (goal.unitOfMeasurement === 'zero-based' && goal.target !== 0) {
+      return 'Zero-based goals must use a target of 0.'
+    }
+  }
+
+  return null
+}
+
 export function validateGoalsForSubmit(goals: GoalSheetGoalInput[]): string | null {
   if (goals.length < 1) {
     return 'At least one goal is required.'
@@ -127,11 +207,35 @@ export function validateGoalsForSubmit(goals: GoalSheetGoalInput[]): string | nu
   }
 
   for (const goal of goals) {
-    if (!goal.title.trim() || !goal.thrustArea || !goal.target || !goal.weightage) {
-      return 'All goals must have title, thrust area, target, and weightage.'
+    if (!goal.title.trim() || !goal.thrustArea || !goal.weightage) {
+      return 'All goals must have title, thrust area, unit of measurement, target, and weightage.'
     }
-    if (goal.weightage < 10) {
-      return 'Each goal must have at least 10% weightage.'
+    if (!Number.isFinite(goal.weightage) || goal.weightage < 10 || goal.weightage > 100) {
+      return 'Goal weightage must be between 10 and 100.'
+    }
+
+    if (goal.unitOfMeasurement === 'timeline') {
+      if (!goal.targetDate || Number.isNaN(Date.parse(goal.targetDate))) {
+        return 'Timeline goals require a valid target date.'
+      }
+      continue
+    }
+
+    if (!Number.isFinite(goal.target) || goal.target < 0) {
+      return 'Goal targets cannot be negative.'
+    }
+
+    if (
+      (goal.unitOfMeasurement === 'percentage' ||
+        goal.unitOfMeasurement === 'percentage-higher-better' ||
+        goal.unitOfMeasurement === 'percentage-lower-better') &&
+      goal.target > 100
+    ) {
+      return 'Percentage targets must be between 0 and 100.'
+    }
+
+    if (goal.unitOfMeasurement === 'zero-based' && goal.target !== 0) {
+      return 'Zero-based goals must use a target of 0.'
     }
   }
 
@@ -170,11 +274,12 @@ const GOAL_SHEET_WITH_GOALS_SELECT = `
     goal_sheet_id,
     employee_id,
     thrust_area_id,
-    title,
-    description,
-    uom_type,
-    target,
-    weightage,
+      title,
+      description,
+      uom_type,
+      target,
+      target_date,
+      weightage,
     status,
     approval_status,
     is_shared,
@@ -270,6 +375,10 @@ export async function getEmployeeGoalSheet(
     return null
   }
 
+  if (!isRealUuid(employeeId) || !isRealUuid(cycleId)) {
+    return null
+  }
+
   const supabase = createClient()
   if (!supabase) {
     return null
@@ -300,6 +409,14 @@ export async function getOrCreateCurrentGoalSheet(
   managerId?: string | null
 ): Promise<GoalSheetRecord | null> {
   if (!isSupabaseConfigured()) {
+    return null
+  }
+
+  if (
+    !isRealUuid(employeeId) ||
+    !isRealUuid(cycleId) ||
+    (managerId != null && !isRealUuid(managerId))
+  ) {
     return null
   }
 
@@ -366,12 +483,31 @@ export async function saveGoalSheetDraft(
     return { goalSheet: null, error: null, demoMode: true }
   }
 
+  if (
+    !isRealUuid(params.employeeId) ||
+    !isRealUuid(params.cycleId) ||
+    (params.managerId != null && !isRealUuid(params.managerId))
+  ) {
+    return { goalSheet: null, error: 'Invalid goal sheet payload.' }
+  }
+
   const supabase = createClient()
   if (!supabase) {
     return { goalSheet: null, error: 'Supabase client unavailable' }
   }
 
   const goals = filterGoalsForSave(params.goals)
+  const validationError = validateGoalsForDraft(goals)
+  if (validationError) {
+    return { goalSheet: null, error: validationError }
+  }
+  const timelineValidationError = await validateTimelineTargetsWithinCycle(
+    params.cycleId,
+    goals
+  )
+  if (timelineValidationError) {
+    return { goalSheet: null, error: timelineValidationError }
+  }
   const { totalWeightage, goalsCount } = computeTotals(goals)
 
   try {
@@ -408,7 +544,7 @@ export async function saveGoalSheetDraft(
       .from('goal_sheets')
       .update({
         manager_id: params.managerId ?? sheet.managerId,
-        status: 'draft',
+        status: sheet.status === 'returned' ? 'returned' : 'draft',
         total_weightage: totalWeightage,
         goals_count: goalsCount,
         submitted_at: null,
@@ -422,7 +558,25 @@ export async function saveGoalSheetDraft(
       return { goalSheet: null, error: error.message }
     }
 
-    return { goalSheet: mapRow(data as DbGoalSheetRow), error: null }
+    const savedSheet = mapRow(data as DbGoalSheetRow)
+
+    try {
+      await createAuditLog({
+        actorId: params.employeeId,
+        actorRole: 'employee',
+        employeeId: params.employeeId,
+        goalSheetId: savedSheet.id,
+        actionType: 'goal_draft_saved',
+        fieldChanged: 'Goal Sheet Draft',
+        oldValue: sheet.status,
+        newValue: savedSheet.status,
+        description: 'Employee saved goal sheet draft',
+      })
+    } catch (err) {
+      console.error('[saveGoalSheetDraft] audit error:', err)
+    }
+
+    return { goalSheet: savedSheet, error: null }
   } catch (err) {
     return {
       goalSheet: null,
@@ -438,6 +592,14 @@ export async function submitGoalSheet(
     return { goalSheet: null, error: null, demoMode: true }
   }
 
+  if (
+    !isRealUuid(params.employeeId) ||
+    !isRealUuid(params.cycleId) ||
+    (params.managerId != null && !isRealUuid(params.managerId))
+  ) {
+    return { goalSheet: null, error: 'Invalid goal sheet payload.' }
+  }
+
   const validationError = validateGoalsForSubmit(
     filterGoalsForSave(
       params.goals.map((g) => ({
@@ -449,6 +611,13 @@ export async function submitGoalSheet(
   if (validationError) {
     return { goalSheet: null, error: validationError }
   }
+  const timelineValidationError = await validateTimelineTargetsWithinCycle(
+    params.cycleId,
+    params.goals
+  )
+  if (timelineValidationError) {
+    return { goalSheet: null, error: timelineValidationError }
+  }
 
   const goals = filterGoalsForSave(params.goals).map((g) => ({
     title: g.title.trim(),
@@ -456,6 +625,7 @@ export async function submitGoalSheet(
     thrustArea: g.thrustArea,
     unitOfMeasurement: g.unitOfMeasurement,
     target: Number(g.target),
+    targetDate: g.targetDate ?? null,
     weightage: Number(g.weightage),
   }))
 
