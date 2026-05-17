@@ -640,6 +640,10 @@ export async function returnGoalSheetForRework(
       .from('goal_sheets')
       .update({
         status: 'returned',
+        submitted_at: null,
+        approved_at: null,
+        approved_by: null,
+        locked_at: null,
         returned_at: now,
         manager_comment: trimmed,
       })

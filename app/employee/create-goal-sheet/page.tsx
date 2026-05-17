@@ -21,6 +21,7 @@ import { mockGoalCycle } from '@/lib/mock-data'
 import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
 import {
   getCurrentEmployeeGoalSheetWithGoals,
+  isEditableGoalSheetStatus,
   saveGoalSheetDraft,
   submitGoalSheet,
 } from '@/lib/data/goal-sheets'
@@ -29,7 +30,7 @@ import { isRealUuid } from '@/lib/data/goals'
 import { getThrustAreaNames } from '@/lib/data/reference-data'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
-import type { GoalCycle, UnitOfMeasurement } from '@/lib/types'
+import type { GoalCycle, GoalSheetStatus, UnitOfMeasurement } from '@/lib/types'
 import { 
   Plus, 
   Trash2, 
@@ -131,6 +132,13 @@ function hasValidTarget(goal: DraftGoal, cycle: GoalCycle | null) {
   return !isPercentageUom(goal.unitOfMeasurement) || target <= 100
 }
 
+function normalizeGoalSheetStatus(status: string): GoalSheetStatus {
+  if (status === 'pending_approval') return 'pending-approval'
+  if (status === 'rework_required') return 'rework-required'
+  if (status === 'final_closed') return 'final-closed'
+  return status as GoalSheetStatus
+}
+
 export default function CreateGoalSheetPage() {
   const { liveProfile, error: profileError } = useCurrentProfile()
   const [activeCycle, setActiveCycle] = useState<GoalCycle | null>(
@@ -144,6 +152,8 @@ export default function CreateGoalSheetPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoadingSheet, setIsLoadingSheet] = useState(false)
+  const [goalSheetStatus, setGoalSheetStatus] = useState<GoalSheetStatus>('draft')
+  const [managerFeedback, setManagerFeedback] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -219,12 +229,10 @@ export default function CreateGoalSheetPage() {
             : [emptyGoal('draft-1')]
         )
         setNextDraftId(Math.max(result.goals.length + 1, 2))
-        setIsSubmitted(!['draft', 'returned'].includes(result.goalSheet.status))
-        setCurrentStep(
-          result.goalSheet.status === 'draft' || result.goalSheet.status === 'returned'
-            ? 1
-            : 4
-        )
+        setGoalSheetStatus(result.goalSheet.status)
+        setManagerFeedback(result.goalSheet.managerComments)
+        setIsSubmitted(!isEditableGoalSheetStatus(result.goalSheet.status))
+        setCurrentStep(isEditableGoalSheetStatus(result.goalSheet.status) ? 1 : 4)
       }
 
       setIsLoadingSheet(false)
@@ -249,7 +257,7 @@ export default function CreateGoalSheetPage() {
     }
   }, [])
 
-  const isReadOnly = isSubmitted
+  const isReadOnly = !isEditableGoalSheetStatus(goalSheetStatus)
 
   const totalWeightage = goals.reduce((sum, g) => sum + (parseInt(g.weightage, 10) || 0), 0)
   const goalsCount = goals.filter((g) => g.title.trim()).length
@@ -340,6 +348,10 @@ export default function CreateGoalSheetPage() {
           return
         }
 
+        if (result.goalSheet) {
+          setGoalSheetStatus(normalizeGoalSheetStatus(result.goalSheet.status))
+          setIsSubmitted(false)
+        }
         setStatusMessage('Draft saved to Supabase.')
       } finally {
         setIsSaving(false)
@@ -389,8 +401,10 @@ export default function CreateGoalSheetPage() {
           return
         }
 
+        setGoalSheetStatus('pending-approval')
         setIsSubmitted(true)
         setCurrentStep(4)
+        setManagerFeedback(null)
         setStatusMessage('Goal sheet submitted for manager approval.')
       } finally {
         setIsSubmitting(false)
@@ -414,12 +428,27 @@ export default function CreateGoalSheetPage() {
     }
 
     setCurrentStep(4)
+    setGoalSheetStatus('pending-approval')
+    setIsSubmitted(true)
     setStatusMessage('Goal sheet submitted locally for demo.')
   }
 
-  const statusBadge = isSubmitted ? (
+  const statusBadge =
+    goalSheetStatus === 'approved' ||
+    goalSheetStatus === 'locked' ||
+    goalSheetStatus === 'final-closed' ? (
+    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+      Locked
+    </Badge>
+  ) : goalSheetStatus === 'pending-approval' || goalSheetStatus === 'submitted' ? (
     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
       Pending Approval
+    </Badge>
+  ) : goalSheetStatus === 'returned' ||
+    goalSheetStatus === 'rejected' ||
+    goalSheetStatus === 'rework-required' ? (
+    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
+      Returned for Rework
     </Badge>
   ) : (
     <Badge variant="outline" className="bg-warning/10 text-warning-foreground border-warning/20">
@@ -443,6 +472,16 @@ export default function CreateGoalSheetPage() {
           <Alert className="border-destructive/30 bg-destructive/5">
             <AlertCircle className="h-4 w-4 text-destructive" />
             <AlertDescription className="text-destructive">{errorMessage}</AlertDescription>
+          </Alert>
+        )}
+
+        {isEditableGoalSheetStatus(goalSheetStatus) && managerFeedback && (
+          <Alert className="border-destructive/30 bg-destructive/5">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+            <AlertDescription className="text-destructive">
+              <span className="font-medium">Manager feedback:</span>{' '}
+              {managerFeedback}
+            </AlertDescription>
           </Alert>
         )}
 

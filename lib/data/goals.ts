@@ -18,6 +18,8 @@ type DbGoalSheetStatus =
   | 'pending_approval'
   | 'approved'
   | 'returned'
+  | 'rejected'
+  | 'rework_required'
   | 'locked'
   | 'final_closed'
 
@@ -130,6 +132,8 @@ const SHEET_STATUS_FROM_DB: Record<DbGoalSheetStatus, GoalSheetStatus> = {
   pending_approval: 'pending-approval',
   approved: 'approved',
   returned: 'returned',
+  rejected: 'rejected',
+  rework_required: 'rework-required',
   locked: 'locked',
   final_closed: 'final-closed',
 }

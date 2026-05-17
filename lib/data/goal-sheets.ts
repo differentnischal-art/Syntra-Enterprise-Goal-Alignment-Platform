@@ -23,6 +23,8 @@ export type GoalSheetStatus =
   | 'pending_approval'
   | 'approved'
   | 'returned'
+  | 'rejected'
+  | 'rework_required'
   | 'locked'
   | 'final_closed'
 
@@ -116,6 +118,16 @@ function computeTotals(goals: GoalSheetGoalInput[]) {
     totalWeightage,
     goalsCount: goals.length,
   }
+}
+
+export function isEditableGoalSheetStatus(status: string | null | undefined): boolean {
+  return (
+    status === 'draft' ||
+    status === 'returned' ||
+    status === 'rejected' ||
+    status === 'rework_required' ||
+    status === 'rework-required'
+  )
 }
 
 async function validateTimelineTargetsWithinCycle(
@@ -523,10 +535,10 @@ export async function saveGoalSheetDraft(
       return { goalSheet: null, error: 'Could not create or load goal sheet.' }
     }
 
-    if (sheet.status !== 'draft' && sheet.status !== 'returned') {
+    if (!isEditableGoalSheetStatus(sheet.status)) {
       return {
         goalSheet: null,
-        error: 'Goal sheet can only be edited while in draft or returned status.',
+        error: 'Goal sheet can only be edited while in draft or returned for rework status.',
       }
     }
 
@@ -544,10 +556,13 @@ export async function saveGoalSheetDraft(
       .from('goal_sheets')
       .update({
         manager_id: params.managerId ?? sheet.managerId,
-        status: sheet.status === 'returned' ? 'returned' : 'draft',
+        status: sheet.status === 'draft' ? 'draft' : sheet.status,
         total_weightage: totalWeightage,
         goals_count: goalsCount,
         submitted_at: null,
+        approved_at: null,
+        approved_by: null,
+        locked_at: null,
       })
       .eq('id', sheet.id)
       .select(GOAL_SHEET_SELECT)
@@ -647,10 +662,10 @@ export async function submitGoalSheet(
       return { goalSheet: null, error: 'Could not create or load goal sheet.' }
     }
 
-    if (sheet.status !== 'draft' && sheet.status !== 'returned') {
+    if (!isEditableGoalSheetStatus(sheet.status)) {
       return {
         goalSheet: null,
-        error: 'Goal sheet has already been submitted.',
+        error: 'Goal sheet has already been submitted or approved.',
       }
     }
 

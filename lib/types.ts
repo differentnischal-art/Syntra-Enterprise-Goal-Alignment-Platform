@@ -19,6 +19,8 @@ export type GoalSheetStatus =
   | 'pending-approval'
   | 'approved'
   | 'returned'
+  | 'rejected'
+  | 'rework-required'
   | 'locked'
   | 'q1-updated'
   | 'q2-updated'

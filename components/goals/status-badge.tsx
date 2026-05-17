@@ -31,6 +31,8 @@ export function StatusBadge({ status, type = 'goal' }: StatusBadgeProps) {
       'pending-approval': { label: 'Pending Approval', className: 'bg-warning/10 text-warning-foreground border-warning/20' },
       'approved': { label: 'Approved', className: 'bg-success/10 text-success border-success/20' },
       'returned': { label: 'Returned', className: 'bg-destructive/10 text-destructive border-destructive/20' },
+      'rejected': { label: 'Rejected', className: 'bg-destructive/10 text-destructive border-destructive/20' },
+      'rework-required': { label: 'Rework Required', className: 'bg-destructive/10 text-destructive border-destructive/20' },
       'locked': { label: 'Locked', className: 'bg-primary/10 text-primary border-primary/20' },
       'q1-updated': { label: 'Q1 Updated', className: 'bg-success/10 text-success border-success/20' },
       'q2-updated': { label: 'Q2 Updated', className: 'bg-success/10 text-success border-success/20' },

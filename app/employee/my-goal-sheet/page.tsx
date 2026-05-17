@@ -130,6 +130,8 @@ function StatusBanner({ goalSheet }: { goalSheet: GoalSheet }) {
         </Alert>
       )
     case 'returned':
+    case 'rejected':
+    case 'rework-required':
       return (
         <Alert className="border-destructive/30 bg-destructive/5">
           <AlertCircle className="h-4 w-4 text-destructive" />
@@ -197,6 +199,11 @@ export default function MyGoalSheetPage() {
   const activityLogs: DisplayActivity[] = isSupabaseConfigured()
     ? (liveActivityLogs ?? []).map(mapAuditActivity)
     : mockActivityLogs.map(mapMockActivity)
+  const canEditGoalSheet =
+    goalSheet?.status === 'draft' ||
+    goalSheet?.status === 'returned' ||
+    goalSheet?.status === 'rejected' ||
+    goalSheet?.status === 'rework-required'
 
   const sourceBadgeLabel =
     dataSource === 'supabase'
@@ -326,6 +333,14 @@ export default function MyGoalSheetPage() {
                   <CardTitle className="text-base font-semibold">Quick Actions</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
+                  {canEditGoalSheet && (
+                    <Button className="w-full justify-start" asChild>
+                      <Link href="/employee/create-goal-sheet">
+                        <FileText className="mr-2 h-4 w-4" />
+                        Continue Editing
+                      </Link>
+                    </Button>
+                  )}
                   <Button variant="outline" className="w-full justify-start" asChild>
                     <Link href="/employee/quarterly-check-ins">
                       <CalendarCheck className="mr-2 h-4 w-4" />
