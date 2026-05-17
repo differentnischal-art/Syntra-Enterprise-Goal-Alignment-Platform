@@ -132,6 +132,14 @@
   }
 }
 
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a;
+  box-shadow: 0 0 0px 1000px #ffffff inset;
+  caret-color: #7c3aed;
+}
+
 /* Landing page animations */
 @keyframes progressLine {
   from {

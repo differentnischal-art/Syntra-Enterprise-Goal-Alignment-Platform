@@ -370,7 +370,7 @@ export default function LoginPage() {
                     placeholder="you@company.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className={`h-11 border-white/15 bg-white/[0.06] text-white placeholder:text-white/35 ${errors.email ? 'border-destructive' : ''}`}
+                    className={`h-11 bg-white text-slate-900 placeholder:text-slate-400 caret-violet-600 border-slate-300 focus-visible:ring-violet-500 ${errors.email ? 'border-destructive' : ''}`}
                   />
                   {errors.email && (
                     <p className="text-xs text-destructive">{errors.email}</p>
@@ -385,7 +385,7 @@ export default function LoginPage() {
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className={`h-11 border-white/15 bg-white/[0.06] text-white placeholder:text-white/35 ${errors.password ? 'border-destructive' : ''}`}
+                    className={`h-11 bg-white text-slate-900 placeholder:text-slate-400 caret-violet-600 border-slate-300 focus-visible:ring-violet-500 ${errors.password ? 'border-destructive' : ''}`}
                   />
                   {errors.password && (
                     <p className="text-xs text-destructive">{errors.password}</p>
