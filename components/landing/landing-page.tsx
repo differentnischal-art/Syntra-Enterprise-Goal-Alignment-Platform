@@ -53,24 +53,26 @@ export function LandingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-blue-50/30">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 border-b border-border/40 bg-white/80 backdrop-blur-md">
+      <nav className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/80 text-white backdrop-blur-md">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shadow-sm">
-                <Layers className="h-5 w-5 text-primary-foreground" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-slate-950 shadow-sm">
+                <Layers className="h-5 w-5 text-slate-950" />
               </div>
               <div className="flex flex-col">
-                <span className="font-semibold text-foreground">AlignOS</span>
-                <span className="text-[10px] text-muted-foreground leading-none">Enterprise Goal Suite</span>
+                <span className="font-semibold text-white">AlignOS</span>
+                <span className="text-[10px] leading-none text-white/55">Enterprise Goal Suite</span>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Link href="#demo">
-                <Button variant="ghost" size="sm">View Demo</Button>
+              <Link href={showDemoAccess ? '#demo' : '#lifecycle'}>
+                <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white">
+                  {showDemoAccess ? 'View Demo' : 'View Workflows'}
+                </Button>
               </Link>
               <Link href="/login">
-                <Button size="sm">Sign In</Button>
+                <Button size="sm" className="bg-white text-slate-950 hover:bg-white/90">Sign In</Button>
               </Link>
             </div>
           </div>
@@ -78,36 +80,40 @@ export function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden pt-16 pb-24 md:pt-24 md:pb-32">
+      <section className="relative overflow-hidden bg-slate-950 pt-16 pb-20 text-white md:pt-24 md:pb-28">
         {/* Background Decorations */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-primary/5 blur-3xl" />
-          <div className="absolute -bottom-40 -left-40 h-80 w-80 rounded-full bg-blue-500/5 blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="landing-grid absolute inset-0 opacity-70" />
+          <div className="landing-hero-radial absolute inset-0" />
+          <div className="landing-hero-blob landing-hero-blob-one absolute -left-24 top-10 h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
+          <div className="landing-hero-blob landing-hero-blob-two absolute right-[-5rem] top-6 h-[26rem] w-[26rem] rounded-full bg-indigo-500/25 blur-3xl" />
+          <div className="landing-hero-blob landing-hero-blob-three absolute bottom-[-10rem] left-1/3 h-[24rem] w-[24rem] rounded-full bg-emerald-400/15 blur-3xl" />
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent" />
         </div>
 
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <Badge variant="outline" className="mb-6 px-4 py-1.5 text-sm font-normal border-primary/20 bg-primary/5 text-primary">
+        <div className="relative mx-auto grid max-w-7xl items-center gap-12 px-4 sm:px-6 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:gap-8 lg:px-8">
+          <div className="text-center lg:text-left">
+            <Badge variant="outline" className="mb-6 border-white/15 bg-white/10 px-4 py-1.5 text-sm font-normal text-white/85">
               Enterprise Goal Lifecycle Suite
             </Badge>
             
-            <h1 className="mx-auto max-w-4xl text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl text-balance">
+            <h1 className="mx-auto max-w-4xl text-balance text-4xl font-bold tracking-tight text-white sm:text-5xl lg:mx-0 lg:text-6xl">
               Align goals, approvals, check-ins, and performance visibility in one place
             </h1>
             
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground leading-relaxed text-pretty">
+            <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-white/68 lg:mx-0">
               A role-based goal setting and tracking portal for employees, managers, and HR teams to manage the full goal lifecycle from creation to quarterly check-ins and audit-ready reporting.
             </p>
 
-            <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row lg:justify-start">
               <Link href={showDemoAccess ? '#demo' : '/login'}>
-                <Button size="lg" className="gap-2 px-8 shadow-lg shadow-primary/20">
+                <Button size="lg" className="gap-2 bg-white px-8 text-slate-950 shadow-lg shadow-white/10 hover:bg-white/90">
                   {showDemoAccess ? 'Open Demo' : 'Sign In'}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
               <Link href="#lifecycle">
-                <Button variant="outline" size="lg" className="gap-2 px-8">
+                <Button variant="outline" size="lg" className="gap-2 border-white/20 bg-white/5 px-8 text-white hover:bg-white/10 hover:text-white">
                   View Workflows
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -116,7 +122,7 @@ export function LandingPage() {
           </div>
 
           {/* Hero Animation */}
-          <div className="mt-16 md:mt-20">
+          <div className="mt-14 lg:mt-0">
             <HeroAnimation />
           </div>
         </div>

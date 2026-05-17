@@ -161,3 +161,164 @@
     opacity: 1;
   }
 }
+
+@keyframes landingBlobFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -18px, 0) scale(1.05);
+  }
+}
+
+@keyframes landingGridShift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(36px, 36px, 0);
+  }
+}
+
+@keyframes landingFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes landingOrbitPulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: translate(-50%, -50%) scale(1.03);
+  }
+}
+
+@keyframes landingFlowTrace {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+@keyframes landingFlowDot {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes landingStatusRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landingProgress {
+  0% {
+    width: 18%;
+  }
+  55% {
+    width: 82%;
+  }
+  100% {
+    width: 82%;
+  }
+}
+
+.landing-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(circle at center, black 22%, transparent 78%);
+  animation: landingGridShift 18s linear infinite;
+}
+
+.landing-hero-radial {
+  background:
+    radial-gradient(circle at 50% 16%, rgba(255, 255, 255, 0.12), transparent 28%),
+    radial-gradient(circle at 18% 24%, rgba(16, 185, 129, 0.16), transparent 22%),
+    radial-gradient(circle at 82% 22%, rgba(99, 102, 241, 0.18), transparent 24%);
+}
+
+.landing-hero-blob {
+  animation: landingBlobFloat 12s ease-in-out infinite;
+}
+
+.landing-hero-blob-two {
+  animation-delay: 1.8s;
+}
+
+.landing-hero-blob-three {
+  animation-delay: 3.6s;
+}
+
+.landing-floating-card {
+  animation: landingFloat 6s ease-in-out infinite;
+}
+
+.landing-floating-card:nth-child(2) {
+  animation-delay: 1s;
+}
+
+.landing-floating-card:nth-child(3) {
+  animation-delay: 2s;
+}
+
+.landing-hero-orbit {
+  animation: landingOrbitPulse 7s ease-in-out infinite;
+}
+
+.landing-hero-orbit-delayed {
+  animation-delay: 1.4s;
+}
+
+.landing-flow-trace {
+  animation: landingFlowTrace 3.4s ease-in-out infinite;
+}
+
+.landing-flow-dot {
+  animation: landingFlowDot 2.4s ease-in-out infinite;
+}
+
+.landing-status-row {
+  animation: landingStatusRise 700ms ease-out both;
+}
+
+.landing-progress-bar {
+  animation: landingProgress 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-grid,
+  .landing-hero-blob,
+  .landing-floating-card,
+  .landing-hero-orbit,
+  .landing-flow-trace,
+  .landing-flow-dot,
+  .landing-status-row,
+  .landing-progress-bar {
+    animation: none !important;
+  }
+}
