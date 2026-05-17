@@ -23,8 +23,10 @@ export type GoalSheetStatus =
   | 'pending_approval'
   | 'approved'
   | 'returned'
+  | 'returned_for_rework'
   | 'rejected'
   | 'rework_required'
+  | 'unlocked'
   | 'locked'
   | 'final_closed'
 
@@ -140,9 +142,12 @@ export function isEditableGoalSheetStatus(status: string | null | undefined): bo
   return (
     status === 'draft' ||
     status === 'returned' ||
+    status === 'returned_for_rework' ||
+    status === 'returned-for-rework' ||
     status === 'rejected' ||
     status === 'rework_required' ||
-    status === 'rework-required'
+    status === 'rework-required' ||
+    status === 'unlocked'
   )
 }
 
@@ -355,6 +360,8 @@ export async function getCurrentEmployeeGoalSheetWithGoals(params: {
       .select(GOAL_SHEET_WITH_GOALS_SELECT)
       .eq('employee_id', params.employeeId)
       .eq('cycle_id', params.cycleId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
     if (error) {
@@ -427,6 +434,8 @@ export async function getEmployeeGoalSheet(
     .select(GOAL_SHEET_SELECT)
     .eq('employee_id', employeeId)
     .eq('cycle_id', cycleId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   if (error) {

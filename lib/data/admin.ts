@@ -708,24 +708,57 @@ export async function unlockGoalSheet(
   }
 
   const now = new Date().toISOString()
+  const updatePayload = {
+    status: 'returned_for_rework',
+    is_locked: false,
+    unlocked_at: now,
+    unlocked_by: admin.id,
+    unlock_reason: trimmedReason,
+    updated_at: now,
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[unlockGoalSheet] selected goalSheetId:', goalSheetId)
+    console.log('[unlockGoalSheet] update payload:', updatePayload)
+  }
+
   const { error: updateSheetError } = await supabase
     .from('goal_sheets')
-    .update({
-      status: 'returned',
-      is_locked: false,
-      locked_at: null,
-      unlocked_at: now,
-      unlocked_by: admin.id,
-      unlock_reason: trimmedReason,
-      submitted_at: null,
-      approved_at: null,
-      approved_by: null,
-      manager_comment: trimmedReason,
-    })
+    .update(updatePayload)
     .eq('id', goalSheetId)
 
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[unlockGoalSheet] update error:', updateSheetError?.message ?? null)
+  }
+
   if (updateSheetError) {
+    console.error('[unlockGoalSheet] failed to update goal_sheets:', updateSheetError.message)
     return { success: false, error: updateSheetError.message }
+  }
+
+  const { data: verifyRow, error: verifyError } = await supabase
+    .from('goal_sheets')
+    .select('id,status,is_locked,unlocked_at,unlocked_by,unlock_reason,updated_at')
+    .eq('id', goalSheetId)
+    .single()
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[unlockGoalSheet] verify:', verifyRow)
+  }
+
+  if (verifyError) {
+    console.error('[unlockGoalSheet] verify error:', verifyError.message)
+    return { success: false, error: verifyError.message }
+  }
+
+  if (
+    !verifyRow ||
+    verifyRow.status !== 'returned_for_rework' ||
+    verifyRow.is_locked === true ||
+    !verifyRow.unlocked_at ||
+    !verifyRow.unlock_reason
+  ) {
+    return { success: false, error: 'Unlock failed: goal sheet state did not change.' }
   }
 
   const { error: updateGoalsError } = await supabase
@@ -745,7 +778,7 @@ export async function unlockGoalSheet(
     actionType: 'goal_sheet_unlocked',
     fieldChanged: 'Goal Sheet Status',
     oldValue: oldStatus,
-    newValue: 'returned',
+    newValue: 'returned_for_rework',
     description: `Admin unlocked goal sheet for rework: ${trimmedReason}`,
   })
 
@@ -754,7 +787,7 @@ export async function unlockGoalSheet(
     type: 'goal_returned',
     title: 'Goal Sheet Unlocked',
     message: 'Admin unlocked your goal sheet for rework. Edit and resubmit for manager approval.',
-    link: '/employee/my-goal-sheet',
+    link: '/employee/create-goal-sheet',
   })
 
   return { success: true, error: null }

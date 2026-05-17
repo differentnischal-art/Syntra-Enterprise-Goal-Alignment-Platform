@@ -91,8 +91,22 @@ export default function AdminDashboard() {
     setUnlockReasonError(null)
   }
 
-  const handleUnlock = async () => {
-    if (!liveProfile || !selectedUnlockSheet) return
+  const isUnlocking = Boolean(unlockingId)
+  const canUnlock =
+    Boolean(selectedUnlockSheet?.id) &&
+    unlockReason.trim().length > 0 &&
+    !isUnlocking
+
+  const handleConfirmUnlock = async () => {
+    if (!selectedUnlockSheet) return
+    if (!liveProfile) {
+      toast({
+        title: 'Unlock failed',
+        description: 'Live admin session is required.',
+        variant: 'destructive',
+      })
+      return
+    }
     const reason = unlockReason.trim()
     if (!reason) {
       setUnlockReasonError('Unlock reason is required.')
@@ -101,22 +115,32 @@ export default function AdminDashboard() {
 
     const sheet = selectedUnlockSheet
     setUnlockingId(sheet.id)
-    const result = await unlockGoalSheet(sheet.id, liveProfile, reason)
-    setUnlockingId(null)
-    if (result.success) {
-      toast({
-        title: 'Goal sheet unlocked',
-        description: `${sheet.employeeName}'s sheet is unlocked for rework.`,
-      })
-      setSelectedUnlockSheet(null)
-      setUnlockReason('')
-      await loadDashboard()
-    } else {
+    try {
+      const result = await unlockGoalSheet(sheet.id, liveProfile, reason)
+      if (result.success) {
+        toast({
+          title: 'Goal sheet unlocked',
+          description: `${sheet.employeeName}'s sheet is unlocked for rework.`,
+        })
+        setSelectedUnlockSheet(null)
+        setUnlockReason('')
+        setUnlockReasonError(null)
+        await loadDashboard()
+      } else {
+        toast({
+          title: 'Unlock failed',
+          description: result.error ?? 'Could not unlock the goal sheet.',
+          variant: 'destructive',
+        })
+      }
+    } catch (err) {
       toast({
         title: 'Unlock failed',
-        description: result.error ?? 'Could not unlock the goal sheet.',
+        description: err instanceof Error ? err.message : 'Could not unlock the goal sheet.',
         variant: 'destructive',
       })
+    } finally {
+      setUnlockingId(null)
     }
   }
 
@@ -275,7 +299,7 @@ export default function AdminDashboard() {
       <Dialog
         open={Boolean(selectedUnlockSheet)}
         onOpenChange={(open) => {
-          if (!open && !unlockingId) {
+          if (!open && !isUnlocking) {
             setSelectedUnlockSheet(null)
             setUnlockReason('')
             setUnlockReasonError(null)
@@ -312,15 +336,17 @@ export default function AdminDashboard() {
                 setUnlockReasonError(null)
               }}
               disabled={Boolean(unlockingId)}
+              type="button"
             >
               Cancel
             </Button>
             <Button
-              onClick={handleUnlock}
-              disabled={Boolean(unlockingId) || !unlockReason.trim()}
+              type="button"
+              onClick={handleConfirmUnlock}
+              disabled={!canUnlock}
             >
               <LockOpen className="mr-2 h-4 w-4" />
-              {unlockingId ? 'Unlocking...' : 'Unlock for Rework'}
+              {isUnlocking ? 'Unlocking...' : 'Unlock for Rework'}
             </Button>
           </DialogFooter>
         </DialogContent>
