@@ -81,10 +81,10 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
         : employeeNavItems
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar">
+    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-sidebar-border/70 bg-sidebar/95 shadow-xl shadow-slate-950/5 backdrop-blur-xl">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+      <div className="flex h-16 items-center gap-3 border-b border-sidebar-border/70 px-6">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/25">
           <Layers className="h-5 w-5 text-primary-foreground" />
         </div>
         <div className="flex flex-col">
@@ -109,13 +109,25 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
               key={item.href}
               href={item.href}
               className={cn(
-                'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/40',
                 isActive
-                  ? 'bg-sidebar-primary text-sidebar-primary-foreground'
-                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-primary/20'
+                  : 'text-sidebar-foreground/70 hover:-translate-y-0.5 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-sm'
               )}
             >
-              <item.icon className={cn('h-4 w-4', isActive ? 'text-sidebar-primary-foreground' : 'text-sidebar-foreground/50 group-hover:text-sidebar-accent-foreground')} />
+              {isActive && (
+                <span className="absolute left-0 h-6 w-1 rounded-r-full bg-sidebar-primary-foreground/80" />
+              )}
+              <span
+                className={cn(
+                  'flex h-7 w-7 items-center justify-center rounded-md transition-colors',
+                  isActive
+                    ? 'bg-white/15 text-sidebar-primary-foreground'
+                    : 'bg-sidebar-accent/40 text-sidebar-foreground/55 group-hover:bg-primary/10 group-hover:text-sidebar-accent-foreground'
+                )}
+              >
+                <item.icon className="h-4 w-4" />
+              </span>
               <span className="flex-1">{item.label}</span>
               {'badge' in item && item.badge != null && (
                 <Badge
@@ -132,7 +144,7 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
       </nav>
 
       {showDemoViews && (
-        <div className="border-t border-sidebar-border px-3 py-3">
+        <div className="border-t border-sidebar-border/70 px-3 py-3">
           <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
             Demo Views
           </p>
@@ -142,7 +154,7 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                 role === 'employee'
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm'
                   : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
               )}
             >
@@ -154,7 +166,7 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                 role === 'manager'
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm'
                   : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
               )}
             >
@@ -166,7 +178,7 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
                 role === 'admin'
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm'
                   : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
               )}
             >
@@ -178,8 +190,8 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
       )}
 
       {/* Cycle Card */}
-      <div className="border-t border-sidebar-border p-3">
-        <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3">
+      <div className="border-t border-sidebar-border/70 p-3">
+        <div className="rounded-lg border border-sidebar-border/70 bg-sidebar-accent/60 p-3 shadow-sm shadow-slate-950/5 transition-all hover:border-primary/20 hover:bg-sidebar-accent">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
@@ -200,10 +212,10 @@ export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
       </div>
 
       {/* Sign Out */}
-      <div className="border-t border-sidebar-border p-3">
+      <div className="border-t border-sidebar-border/70 p-3">
         <Link
           href="/"
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 transition-all hover:-translate-y-0.5 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
         >
           <LogOut className="h-4 w-4" />
           Sign Out

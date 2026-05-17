@@ -384,8 +384,14 @@ export default function AuditTrailPage() {
               </Table>
             </div>
             {filteredLogs.length === 0 && (
-              <div className="py-8 text-center text-muted-foreground">
-                No audit logs found matching your filters
+              <div className="mx-auto my-6 flex max-w-md flex-col items-center justify-center rounded-lg border border-dashed border-primary/20 bg-gradient-to-br from-primary/5 via-background to-success/5 px-6 py-10 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary shadow-sm shadow-primary/10">
+                  <ClipboardList className="h-6 w-6" />
+                </div>
+                <p className="text-sm font-semibold text-foreground">No audit logs found</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Try adjusting the search, role, or action filters to widen the activity view.
+                </p>
               </div>
             )}
             <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">

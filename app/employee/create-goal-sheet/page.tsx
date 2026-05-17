@@ -53,6 +53,8 @@ interface DraftGoal {
   weightage: string
 }
 
+type DraftGoalTextField = Exclude<keyof DraftGoal, 'id' | 'unitOfMeasurement'>
+
 const emptyGoal = (id: string): DraftGoal => ({
   id,
   title: '',
@@ -306,27 +308,33 @@ export default function CreateGoalSheetPage() {
     )
   }
 
-  const updateGoalAt = (
-    goalIndex: number,
-    field: keyof DraftGoal,
-    value: string
-  ) => {
+  const updateGoalAt = (goalIndex: number, getNextGoal: (goal: DraftGoal) => DraftGoal) => {
     if (isReadOnly) return
     setGoals((currentGoals) =>
-      currentGoals.map((g, index) => {
-        if (index !== goalIndex) return g
-        if (field === 'unitOfMeasurement') {
-          const nextUom = value as UnitOfMeasurement
-          return {
-            ...g,
-            unitOfMeasurement: nextUom,
-            target: nextUom === 'zero-based' ? '0' : nextUom === 'timeline' ? '' : g.target,
-            targetDate: nextUom === 'timeline' ? g.targetDate : '',
-          }
-        }
-        return { ...g, [field]: value }
-      })
+      currentGoals.map((goal, index) => (index === goalIndex ? getNextGoal(goal) : goal))
     )
+  }
+
+  const updateGoalFieldAt = (
+    goalIndex: number,
+    field: DraftGoalTextField,
+    value: string
+  ) => {
+    updateGoalAt(goalIndex, (goal) => ({ ...goal, [field]: value }))
+  }
+
+  const updateGoalUnitAt = (goalIndex: number, unitOfMeasurement: UnitOfMeasurement) => {
+    updateGoalAt(goalIndex, (goal) => ({
+      ...goal,
+      unitOfMeasurement,
+      target:
+        unitOfMeasurement === 'zero-based'
+          ? '0'
+          : unitOfMeasurement === 'timeline'
+            ? ''
+            : goal.target,
+      targetDate: unitOfMeasurement === 'timeline' ? goal.targetDate : '',
+    }))
   }
 
   const handleSaveDraft = async () => {
@@ -460,7 +468,7 @@ export default function CreateGoalSheetPage() {
     <DashboardLayout role="employee">
       <DashboardHeader title="Create Goal Sheet" subtitle={activeCycle?.name ?? 'No active cycle'} />
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 p-4 sm:p-6">
         {statusMessage && (
           <Alert className="border-success/30 bg-success/5">
             <CheckCircle2 className="h-4 w-4 text-success" />
@@ -485,7 +493,7 @@ export default function CreateGoalSheetPage() {
           </Alert>
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-4 rounded-lg border border-primary/10 bg-gradient-to-br from-primary/10 via-card/90 to-success/10 p-5 shadow-sm shadow-primary/10 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-3">
               {statusBadge}
@@ -516,7 +524,7 @@ export default function CreateGoalSheetPage() {
           </div>
         </div>
 
-        <Card className="border-border/60">
+        <Card className="border-border/60 bg-card/90">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               {steps.map((step, index) => (
@@ -524,11 +532,11 @@ export default function CreateGoalSheetPage() {
                   <div className="flex items-center gap-3">
                     <div
                       className={`
-                      flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium
+                      flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium shadow-sm transition-all
                       ${step.id < currentStep
-                          ? 'bg-success text-success-foreground'
+                          ? 'bg-success text-success-foreground shadow-success/20'
                           : step.id === currentStep
-                            ? 'bg-primary text-primary-foreground'
+                            ? 'bg-primary text-primary-foreground shadow-primary/25'
                             : 'bg-muted text-muted-foreground'}
                     `}
                     >
@@ -556,7 +564,7 @@ export default function CreateGoalSheetPage() {
           </CardContent>
         </Card>
 
-        <Card className={`border-border/60 ${isValid ? 'border-success/50 bg-success/5' : ''}`}>
+        <Card className={`border-border/60 bg-card/90 ${isValid ? 'border-success/50 bg-gradient-to-br from-success/10 via-card to-card' : 'bg-gradient-to-br from-warning/10 via-card to-card'}`}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               {isValid ? (
@@ -572,8 +580,8 @@ export default function CreateGoalSheetPage() {
               <div className="flex items-center gap-3">
                 <div
                   className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg
-                  ${totalWeightage === 100 ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning-foreground'}
+                  flex h-10 w-10 items-center justify-center rounded-lg shadow-sm
+                  ${totalWeightage === 100 ? 'bg-success/10 text-success shadow-success/10' : 'bg-warning/10 text-warning-foreground shadow-warning/10'}
                 `}
                 >
                   <span className="text-sm font-semibold">{totalWeightage}%</span>
@@ -587,8 +595,8 @@ export default function CreateGoalSheetPage() {
               <div className="flex items-center gap-3">
                 <div
                   className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg
-                  ${goalsCount >= 1 && goalsCount <= 8 ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning-foreground'}
+                  flex h-10 w-10 items-center justify-center rounded-lg shadow-sm
+                  ${goalsCount >= 1 && goalsCount <= 8 ? 'bg-success/10 text-success shadow-success/10' : 'bg-warning/10 text-warning-foreground shadow-warning/10'}
                 `}
                 >
                   <span className="text-sm font-semibold">{goalsCount}/8</span>
@@ -602,8 +610,8 @@ export default function CreateGoalSheetPage() {
               <div className="flex items-center gap-3">
                 <div
                   className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg
-                  ${!validationErrors.minWeightageBreach ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'}
+                  flex h-10 w-10 items-center justify-center rounded-lg shadow-sm
+                  ${!validationErrors.minWeightageBreach ? 'bg-success/10 text-success shadow-success/10' : 'bg-destructive/10 text-destructive shadow-destructive/10'}
                 `}
                 >
                   {!validationErrors.minWeightageBreach ? (
@@ -621,8 +629,8 @@ export default function CreateGoalSheetPage() {
               <div className="flex items-center gap-3">
                 <div
                   className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg
-                  ${!validationErrors.incompleteGoals ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning-foreground'}
+                  flex h-10 w-10 items-center justify-center rounded-lg shadow-sm
+                  ${!validationErrors.incompleteGoals ? 'bg-success/10 text-success shadow-success/10' : 'bg-warning/10 text-warning-foreground shadow-warning/10'}
                 `}
                 >
                   {!validationErrors.incompleteGoals ? (
@@ -642,8 +650,8 @@ export default function CreateGoalSheetPage() {
 
         <div className="space-y-4">
           {goals.map((goal, index) => (
-            <Card key={`${goal.id}-${index}`} className="border-border/60">
-              <CardHeader className="pb-3">
+            <Card key={goal.id} className="border-border/60 bg-card/95">
+              <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/5 via-transparent to-success/5 pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base font-semibold">Goal {index + 1}</CardTitle>
                   {goals.length > 1 && !isReadOnly && (
@@ -667,7 +675,7 @@ export default function CreateGoalSheetPage() {
                       id={`title-${goal.id}`}
                       placeholder="e.g., Improve API response time by 40%"
                       value={goal.title}
-                      onChange={(e) => updateGoalAt(index, 'title', e.target.value)}
+                      onChange={(e) => updateGoalFieldAt(index, 'title', e.target.value)}
                       disabled={isReadOnly}
                     />
                   </div>
@@ -675,10 +683,10 @@ export default function CreateGoalSheetPage() {
                     <Label htmlFor={`thrust-${goal.id}`}>Thrust Area *</Label>
                     <Select
                       value={goal.thrustArea}
-                      onValueChange={(value) => updateGoalAt(index, 'thrustArea', value)}
+                      onValueChange={(value) => updateGoalFieldAt(index, 'thrustArea', value)}
                       disabled={isReadOnly}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger id={`thrust-${goal.id}`}>
                         <SelectValue placeholder="Select thrust area" />
                       </SelectTrigger>
                       <SelectContent>
@@ -698,7 +706,7 @@ export default function CreateGoalSheetPage() {
                     id={`desc-${goal.id}`}
                     placeholder="Describe the goal and success criteria..."
                     value={goal.description}
-                    onChange={(e) => updateGoalAt(index, 'description', e.target.value)}
+                    onChange={(e) => updateGoalFieldAt(index, 'description', e.target.value)}
                     rows={2}
                     disabled={isReadOnly}
                   />
@@ -710,11 +718,11 @@ export default function CreateGoalSheetPage() {
                     <Select
                       value={goal.unitOfMeasurement}
                       onValueChange={(value) =>
-                        updateGoalAt(index, 'unitOfMeasurement', value as UnitOfMeasurement)
+                        updateGoalUnitAt(index, value as UnitOfMeasurement)
                       }
                       disabled={isReadOnly}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger id={`uom-${goal.id}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -735,7 +743,7 @@ export default function CreateGoalSheetPage() {
                         min={activeCycle?.startDate}
                         max={activeCycle?.endDate}
                         value={goal.targetDate}
-                        onChange={(e) => updateGoalAt(index, 'targetDate', e.target.value)}
+                        onChange={(e) => updateGoalFieldAt(index, 'targetDate', e.target.value)}
                         disabled={isReadOnly}
                         className={!hasValidTarget(goal, activeCycle) && goal.title.trim() ? 'border-destructive' : ''}
                       />
@@ -747,7 +755,7 @@ export default function CreateGoalSheetPage() {
                         min={0}
                         max={isPercentageUom(goal.unitOfMeasurement) ? 100 : undefined}
                         value={goal.unitOfMeasurement === 'zero-based' ? '0' : goal.target}
-                        onChange={(e) => updateGoalAt(index, 'target', e.target.value)}
+                        onChange={(e) => updateGoalFieldAt(index, 'target', e.target.value)}
                         disabled={isReadOnly || goal.unitOfMeasurement === 'zero-based'}
                         readOnly={goal.unitOfMeasurement === 'zero-based'}
                         className={!hasValidTarget(goal, activeCycle) && goal.title.trim() ? 'border-destructive' : ''}
@@ -776,7 +784,7 @@ export default function CreateGoalSheetPage() {
                       min={10}
                       max={100}
                       value={goal.weightage}
-                      onChange={(e) => updateGoalAt(index, 'weightage', e.target.value)}
+                      onChange={(e) => updateGoalFieldAt(index, 'weightage', e.target.value)}
                       disabled={isReadOnly}
                       className={
                         parseInt(goal.weightage, 10) > 0 && parseInt(goal.weightage, 10) < 10
@@ -801,7 +809,7 @@ export default function CreateGoalSheetPage() {
           </Button>
         )}
 
-        <Card className="border-border/60 bg-muted/30">
+        <Card className="border-border/60 bg-gradient-to-br from-muted/50 via-card to-primary/5">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Info className="h-4 w-4 text-muted-foreground" />

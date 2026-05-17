@@ -41,7 +41,7 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
       )}
 
       {!isLoading && (
-        <div className="border-b border-border/60 bg-muted/20 px-6 py-1">
+        <div className="border-b border-border/60 bg-background/55 px-6 py-1 backdrop-blur-xl">
           <Badge
             variant="outline"
             className="h-5 border-border/80 px-2 text-[10px] font-normal text-muted-foreground"
@@ -59,7 +59,7 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
           showRoleSwitcher={isUsingMockFallback}
         />
       ) : (
-        <div className="sticky top-0 z-30 flex h-14 items-center border-b border-border bg-card px-6">
+        <div className="sticky top-0 z-30 flex h-14 items-center border-b border-border/70 bg-card/90 px-6 shadow-sm shadow-slate-950/5 backdrop-blur-xl">
           <div>
             <h1 className="text-lg font-semibold text-foreground">
               {title ?? 'AlignOS'}

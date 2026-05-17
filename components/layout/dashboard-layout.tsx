@@ -91,9 +91,9 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[linear-gradient(135deg,rgba(248,250,252,0.98),rgba(245,243,255,0.62)_45%,rgba(236,253,245,0.42))]">
       {/* Mobile Header */}
-      <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border bg-card px-4 lg:hidden">
+      <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border/70 bg-card/90 px-4 shadow-sm shadow-slate-950/5 backdrop-blur-xl lg:hidden">
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="shrink-0 h-9 w-9">
@@ -104,8 +104,8 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
           <SheetContent side="left" className="w-72 p-0 border-r border-sidebar-border">
             <div className="flex h-full flex-col bg-sidebar">
               {/* Logo */}
-              <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-6">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+              <div className="flex h-16 items-center gap-3 border-b border-sidebar-border/70 px-6">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/25">
                   <Layers className="h-5 w-5 text-primary-foreground" />
                 </div>
                 <div className="flex flex-col">
@@ -125,7 +125,7 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
 
               {/* Cycle Card */}
               <div className="border-t border-sidebar-border p-3">
-                <div className="rounded-lg border border-sidebar-border bg-sidebar-accent/30 p-3">
+                <div className="rounded-lg border border-sidebar-border/70 bg-sidebar-accent/60 p-3 shadow-sm shadow-slate-950/5">
                   <div className="flex items-center gap-2">
                     <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10">
                       <Clock className="h-3.5 w-3.5 text-primary" />

@@ -78,7 +78,7 @@ export default function AdminDashboard() {
     <DashboardLayout role="admin">
       <DashboardHeader title="Admin Dashboard" />
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 p-4 sm:p-6">
         {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
@@ -112,7 +112,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Department Completion Heatmap */}
-        <Card className="shadow-sm">
+        <Card className="border-border/60 bg-card/90">
           <CardHeader>
             <CardTitle className="text-lg font-semibold">
               Department Check-in Completion Rates
@@ -142,12 +142,12 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {mockDepartmentCompletion.map((dept) => (
-                    <tr key={dept.department} className="border-t border-border">
+                    <tr key={dept.department} className="border-t border-border transition-colors hover:bg-primary/5">
                       <td className="py-3 pr-4 text-sm font-medium">{dept.department}</td>
                       {(['Q1', 'Q2', 'Q3', 'Q4'] as const).map((quarter) => (
                         <td key={quarter} className="py-3 px-2">
                           <div
-                            className={`mx-auto h-10 w-16 rounded-md flex items-center justify-center text-sm font-medium ${getCompletionColor(
+                            className={`mx-auto flex h-10 w-16 items-center justify-center rounded-md text-sm font-semibold shadow-sm transition-transform hover:scale-105 ${getCompletionColor(
                               dept[quarter]
                             )} ${dept[quarter] >= 50 ? 'text-white' : 'text-foreground'}`}
                           >
@@ -182,7 +182,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Audit Log */}
-        <Card className="shadow-sm">
+        <Card className="border-border/60 bg-card/90">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg font-semibold">Audit Log</CardTitle>
             <Button variant="outline" size="sm" onClick={handleExportCSV}>
@@ -208,7 +208,7 @@ export default function AdminDashboard() {
                 {mockAuditLogs.map((log, index) => (
                   <TableRow
                     key={log.id}
-                    className={index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}
+                    className={index % 2 === 0 ? 'bg-card hover:bg-primary/5' : 'bg-muted/25 hover:bg-primary/5'}
                   >
                     <TableCell className="font-medium">{log.employeeName}</TableCell>
                     <TableCell className="max-w-[150px]">
@@ -230,7 +230,7 @@ export default function AdminDashboard() {
         </Card>
 
         {/* Shared Goal Push Form */}
-        <Card className="shadow-sm">
+        <Card className="border-border/60 bg-card/90">
           <CardHeader>
             <CardTitle className="text-lg font-semibold">Push Shared Goal</CardTitle>
           </CardHeader>
@@ -260,11 +260,11 @@ export default function AdminDashboard() {
 
               <div className="space-y-2">
                 <Label>Select Employees</Label>
-                <div className="max-h-[180px] overflow-y-auto rounded-lg border border-border p-3 space-y-2">
+                <div className="max-h-[180px] space-y-2 overflow-y-auto rounded-lg border border-border/70 bg-background/60 p-3 shadow-inner">
                   {mockEmployees.map((employee) => (
                     <div
                       key={employee.id}
-                      className="flex items-center space-x-2"
+                      className="flex items-center space-x-2 rounded-md px-2 py-1.5 transition-colors hover:bg-primary/5"
                     >
                       <Checkbox
                         id={employee.id}

@@ -61,17 +61,17 @@ export default function ManagerDashboard() {
         subtitle="Team Performance Overview"
       />
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 p-4 sm:p-6">
         {/* KPI Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="border-border/60">
+          <Card className="overflow-hidden bg-gradient-to-br from-primary/10 via-card to-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Direct Reports</p>
                   <p className="text-2xl font-semibold text-foreground">{totalTeamMembers}</p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 shadow-sm shadow-primary/10">
                   <Users className="h-5 w-5 text-primary" />
                 </div>
               </div>
@@ -79,14 +79,14 @@ export default function ManagerDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60">
+          <Card className="overflow-hidden bg-gradient-to-br from-warning/15 via-card to-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Pending Approvals</p>
                   <p className="text-2xl font-semibold text-foreground">{pendingApprovals}</p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 shadow-sm shadow-warning/10">
                   <Clock className="h-5 w-5 text-warning-foreground" />
                 </div>
               </div>
@@ -94,14 +94,14 @@ export default function ManagerDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60">
+          <Card className="overflow-hidden bg-gradient-to-br from-success/10 via-card to-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Team Avg Achievement</p>
                   <p className="text-2xl font-semibold text-foreground">{teamAvgAchievement}%</p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 shadow-sm shadow-success/10">
                   <TrendingUp className="h-5 w-5 text-success" />
                 </div>
               </div>
@@ -109,14 +109,14 @@ export default function ManagerDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60">
+          <Card className="overflow-hidden bg-gradient-to-br from-success/10 via-card to-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Check-in Compliance</p>
                   <p className="text-2xl font-semibold text-foreground">{checkInCompliance}%</p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 shadow-sm shadow-success/10">
                   <CalendarCheck className="h-5 w-5 text-success" />
                 </div>
               </div>
@@ -143,12 +143,14 @@ export default function ManagerDashboard() {
               </CardHeader>
               <CardContent className="p-0">
                 {pendingApprovals === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center px-6">
-                    <div className="mb-4 h-12 w-12 rounded-full bg-success/10 flex items-center justify-center">
+                  <div className="mx-6 mb-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-success/25 bg-gradient-to-br from-success/10 via-background to-primary/5 px-6 py-12 text-center">
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/10 text-success shadow-sm shadow-success/10">
                       <CheckCircle2 className="h-6 w-6 text-success" />
                     </div>
-                    <p className="text-sm font-medium">All Caught Up!</p>
-                    <p className="text-xs text-muted-foreground mt-1">No pending approvals</p>
+                    <p className="text-sm font-semibold">All caught up</p>
+                    <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                      No pending goal sheets need review right now.
+                    </p>
                   </div>
                 ) : (
                   <div className="divide-y divide-border">
@@ -156,7 +158,7 @@ export default function ManagerDashboard() {
                       ? pendingSheets.map((sheet) => (
                           <div
                             key={sheet.goalSheetId}
-                            className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
+                            className="flex items-center justify-between px-6 py-4 transition-all hover:bg-primary/5"
                           >
                             <div className="flex items-center gap-3">
                               <Avatar className="h-9 w-9 border border-border">
@@ -182,7 +184,7 @@ export default function ManagerDashboard() {
                       : demoPendingMembers.map((member) => (
                           <div
                             key={member.id}
-                            className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors"
+                            className="flex items-center justify-between px-6 py-4 transition-all hover:bg-primary/5"
                           >
                         <div className="flex items-center gap-3">
                           <Avatar className="h-9 w-9 border border-border">
@@ -219,7 +221,7 @@ export default function ManagerDashboard() {
             <CardContent className="p-0">
               <div className="divide-y divide-border">
                 {mockActivityLogs.slice(0, 5).map((activity) => (
-                  <div key={activity.id} className="flex items-start gap-3 px-6 py-3">
+                  <div key={activity.id} className="flex items-start gap-3 px-6 py-3 transition-colors hover:bg-primary/5">
                     <div className={`
                       mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full
                       ${activity.type === 'goal-approved' ? 'bg-success/10 text-success' :
@@ -279,7 +281,7 @@ export default function ManagerDashboard() {
                 </thead>
                 <tbody>
                   {mockTeamMembers.map((member, index) => (
-                    <tr key={member.id} className={`border-b border-border last:border-0 ${index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}`}>
+                    <tr key={member.id} className={`border-b border-border transition-colors last:border-0 hover:bg-primary/5 ${index % 2 === 0 ? 'bg-card' : 'bg-muted/25'}`}>
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-3">
                           <Avatar className="h-8 w-8 border border-border">

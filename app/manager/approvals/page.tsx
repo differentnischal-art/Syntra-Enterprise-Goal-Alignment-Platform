@@ -441,11 +441,13 @@ export default function ManagerApprovalsPage() {
 
         {pendingListCount === 0 && !showReviewPanel ? (
           <Card className="border-border/60">
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">
               {useSupabase ? (
                 <>
-                  <Clock className="h-12 w-12 text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium text-foreground">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-warning/10 text-warning-foreground shadow-sm shadow-warning/10">
+                    <Clock className="h-8 w-8" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">
                     No pending goal sheets
                   </h3>
                   <p className="mt-1 text-sm text-muted-foreground max-w-sm">
@@ -454,10 +456,10 @@ export default function ManagerApprovalsPage() {
                 </>
               ) : (
                 <>
-                  <div className="mb-4 h-16 w-16 rounded-full bg-success/10 flex items-center justify-center">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-success/10 text-success shadow-sm shadow-success/10">
                     <CheckCircle2 className="h-8 w-8 text-success" />
                   </div>
-                  <h3 className="text-lg font-medium text-foreground">All Caught Up!</h3>
+                  <h3 className="text-lg font-semibold text-foreground">All caught up</h3>
                   <p className="mt-1 text-sm text-muted-foreground max-w-sm">
                     No pending goal sheet approvals at the moment.
                   </p>

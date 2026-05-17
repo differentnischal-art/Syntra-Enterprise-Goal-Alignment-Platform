@@ -140,7 +140,7 @@ export function Header({ user, title, subtitle, showRoleSwitcher = true }: Heade
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-card px-6">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border/70 bg-card/90 px-6 shadow-sm shadow-slate-950/5 backdrop-blur-xl">
       {/* Left: Title & Subtitle */}
       <div className="flex items-center gap-4">
         {title && (
@@ -161,14 +161,14 @@ export function Header({ user, title, subtitle, showRoleSwitcher = true }: Heade
           <Input
             type="search"
             placeholder="Search goals, employees, audit IDs..."
-            className="h-9 w-64 rounded-lg border-border bg-muted/50 pl-9 text-sm placeholder:text-muted-foreground/60 focus:bg-background"
+            className="h-9 w-64 rounded-lg border-border/80 bg-background/80 pl-9 text-sm placeholder:text-muted-foreground/60 shadow-sm focus:bg-background"
           />
         </div>
 
         {showRoleSwitcher ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 gap-2 border-border bg-transparent text-xs font-medium">
+              <Button variant="outline" size="sm" className="h-9 gap-2 border-border/80 bg-background/70 text-xs font-medium">
                 <span className="hidden sm:inline">Viewing as</span>
                 <Badge variant="outline" className={roleColor}>
                   {roleLabel}
@@ -269,7 +269,7 @@ export function Header({ user, title, subtitle, showRoleSwitcher = true }: Heade
         </DropdownMenu>
 
         {/* User Info */}
-        <div className="flex items-center gap-3 border-l border-border pl-3">
+        <div className="flex items-center gap-3 border-l border-border/70 pl-3">
           <div className="hidden sm:block text-right">
             <p className="text-sm font-medium text-foreground">{user.name}</p>
             <p className="text-[10px] text-muted-foreground">
@@ -278,8 +278,8 @@ export function Header({ user, title, subtitle, showRoleSwitcher = true }: Heade
                 : 'No department assigned'}
             </p>
           </div>
-          <Avatar className="h-8 w-8 border border-border">
-            <AvatarFallback className="bg-primary/10 text-primary text-xs font-medium">
+          <Avatar className="h-8 w-8 border border-primary/20 shadow-sm shadow-primary/10">
+            <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
               {initials}
             </AvatarFallback>
           </Avatar>

@@ -167,10 +167,10 @@ export default function EmployeeDashboard() {
         subtitle={`${activeCycle?.name ?? 'No active cycle'} - ${profile?.department ?? 'Profile unavailable'}`}
       />
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 p-4 sm:p-6">
         <Badge
           variant="outline"
-          className="h-5 border-border/80 px-2 text-[10px] font-normal text-muted-foreground"
+          className="h-5 border-primary/20 bg-primary/5 px-2 text-[10px] font-normal text-primary"
         >
           {sourceLabel}
         </Badge>
@@ -184,7 +184,7 @@ export default function EmployeeDashboard() {
           </Alert>
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-4 rounded-lg border border-primary/10 bg-gradient-to-br from-primary/10 via-card/90 to-success/10 p-5 shadow-sm shadow-primary/10 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-foreground">
               Welcome back, {displayName}
@@ -219,7 +219,7 @@ export default function EmployeeDashboard() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card className="border-border/60">
+          <Card className="overflow-hidden bg-gradient-to-br from-primary/10 via-card to-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
@@ -231,7 +231,7 @@ export default function EmployeeDashboard() {
                     </span>
                   </p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 shadow-sm shadow-primary/10">
                   <Target className="h-5 w-5 text-primary" />
                 </div>
               </div>
@@ -242,7 +242,7 @@ export default function EmployeeDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60">
+          <Card className="overflow-hidden bg-gradient-to-br from-success/10 via-card to-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
@@ -253,7 +253,7 @@ export default function EmployeeDashboard() {
                     {overallAchievement}%
                   </p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 shadow-sm shadow-success/10">
                   <TrendingUp className="h-5 w-5 text-success" />
                 </div>
               </div>
@@ -261,14 +261,14 @@ export default function EmployeeDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60">
+          <Card className="overflow-hidden bg-gradient-to-br from-warning/15 via-card to-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Next Check-in</p>
                   <p className="text-2xl font-semibold text-foreground">{nextCheckIn}</p>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10 shadow-sm shadow-warning/10">
                   <Calendar className="h-5 w-5 text-warning-foreground" />
                 </div>
               </div>
@@ -276,7 +276,7 @@ export default function EmployeeDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/60">
+          <Card className="overflow-hidden bg-gradient-to-br from-primary/10 via-card to-card">
             <CardContent className="p-5">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
@@ -288,7 +288,7 @@ export default function EmployeeDashboard() {
                     />
                   </div>
                 </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 shadow-sm shadow-primary/10">
                   <Lock className="h-5 w-5 text-primary" />
                 </div>
               </div>
@@ -303,7 +303,7 @@ export default function EmployeeDashboard() {
           </Card>
         </div>
 
-        <Card className="border-border/60">
+        <Card className="border-border/60 bg-card/90">
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">Goal Lifecycle Tracker</CardTitle>
             <CardDescription>Your progress through the FY26 goal cycle</CardDescription>
@@ -314,12 +314,12 @@ export default function EmployeeDashboard() {
                 <div key={stage.id} className="flex items-center">
                   <div
                     className={`
-                    flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap
+                    flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition-all hover:-translate-y-0.5 hover:shadow-sm
                     ${
                       stage.status === 'completed'
-                        ? 'bg-success/10 text-success'
+                        ? 'bg-success/10 text-success shadow-sm shadow-success/5'
                         : stage.status === 'current'
-                          ? 'bg-primary text-primary-foreground'
+                          ? 'bg-primary text-primary-foreground shadow-md shadow-primary/20'
                           : 'bg-muted text-muted-foreground'
                     }
                   `}
@@ -358,9 +358,11 @@ export default function EmployeeDashboard() {
               </CardHeader>
               <CardContent className="p-0">
                 {showEmptyState ? (
-                  <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-                    <Target className="h-10 w-10 text-muted-foreground mb-3" />
-                    <p className="text-sm font-medium text-foreground">
+                  <div className="mx-6 mb-6 flex flex-col items-center justify-center rounded-lg border border-dashed border-primary/20 bg-gradient-to-br from-primary/5 via-background to-success/5 px-6 py-12 text-center">
+                    <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shadow-sm shadow-primary/10">
+                      <Target className="h-7 w-7" />
+                    </div>
+                    <p className="text-sm font-semibold text-foreground">
                       No goal sheet created yet
                     </p>
                     <p className="text-sm text-muted-foreground mt-1 max-w-sm">
@@ -375,7 +377,7 @@ export default function EmployeeDashboard() {
                     {goals.map((goal) => (
                       <div
                         key={goal.id}
-                        className="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors"
+                        className="flex items-center gap-4 px-6 py-4 transition-all hover:bg-primary/5"
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
@@ -420,7 +422,7 @@ export default function EmployeeDashboard() {
               <CardContent className="p-0">
                 <div className="divide-y divide-border">
                   {activityLogs.slice(0, 5).map((activity) => (
-                    <div key={activity.id} className="flex items-start gap-3 px-6 py-3">
+                    <div key={activity.id} className="flex items-start gap-3 px-6 py-3 transition-colors hover:bg-primary/5">
                       <div
                         className={`
                         mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full
