@@ -6,7 +6,7 @@ import { User } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { GlobalSearch } from '@/components/search/global-search'
 import {
   getNotificationsForUser,
   markNotificationRead,
@@ -22,7 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Bell, ChevronDown, Search, UserCircle, Users, Shield } from 'lucide-react'
+import { Bell, ChevronDown, UserCircle, Users, Shield } from 'lucide-react'
 
 /** `user` accepts mock users or Supabase profiles mapped via mapProfileRowToUser. */
 interface HeaderProps {
@@ -109,7 +109,9 @@ export function Header({ user, title, subtitle, showRoleSwitcher = true }: Heade
     }
   }, [canFetchNotifications, user.id])
 
-  const notifications = liveNotifications ?? demoNotifications
+  const notifications = canFetchNotifications
+    ? liveNotifications ?? []
+    : demoNotifications
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.isRead).length,
     [notifications]
@@ -155,15 +157,7 @@ export function Header({ user, title, subtitle, showRoleSwitcher = true }: Heade
 
       {/* Right: Search, Role Switch, Notifications, User */}
       <div className="flex items-center gap-3">
-        {/* Search */}
-        <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search goals, employees, audit IDs..."
-            className="h-9 w-64 rounded-lg border-border/80 bg-background/80 pl-9 text-sm placeholder:text-muted-foreground/60 shadow-sm focus:bg-background"
-          />
-        </div>
+        <GlobalSearch user={user} />
 
         {showRoleSwitcher ? (
           <DropdownMenu>
@@ -222,7 +216,7 @@ export function Header({ user, title, subtitle, showRoleSwitcher = true }: Heade
             <DropdownMenuLabel className="flex items-center justify-between">
               <span>Notifications</span>
               <Badge variant="outline" className="text-[10px]">
-                {liveNotifications ? 'Live' : 'Demo'}
+                {canFetchNotifications ? 'Live' : 'Demo'}
               </Badge>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />

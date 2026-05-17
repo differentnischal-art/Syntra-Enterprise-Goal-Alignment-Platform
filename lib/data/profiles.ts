@@ -54,9 +54,11 @@ const PROFILE_SELECT = `
 `
 
 export function mapProfileRowToUser(row: DbProfileRow, managerName?: string): User {
+  const displayName = row.full_name.trim() || row.email.split('@')[0] || 'User'
+
   return {
     id: row.id,
-    name: row.full_name,
+    name: displayName,
     email: row.email,
     role: row.role,
     department: departmentNameFromRow(row.departments) ?? '—',

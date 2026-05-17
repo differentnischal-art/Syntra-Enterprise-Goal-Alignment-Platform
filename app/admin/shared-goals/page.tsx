@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,18 +26,66 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { mockEmployees, mockSharedGoals, thrustAreas } from '@/lib/mock-data'
-import { SharedGoal } from '@/lib/types'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
+import { getProfilesByRole } from '@/lib/data/profiles'
+import { getThrustAreaNames } from '@/lib/data/reference-data'
+import {
+  getSharedGoalsForProfile,
+  type SharedGoalRecord,
+} from '@/lib/data/shared-goals'
+import type { User } from '@/lib/types'
 import { Send, Share2, Lock, RefreshCw, Users, Target } from 'lucide-react'
 
 export default function AdminSharedGoalsPage() {
-  const [sharedGoals] = useState<SharedGoal[]>(mockSharedGoals)
+  const { liveProfile } = useCurrentProfile()
+  const [sharedGoals, setSharedGoals] = useState<SharedGoalRecord[]>([])
+  const [employees, setEmployees] = useState<User[]>([])
+  const [thrustAreas, setThrustAreas] = useState<string[]>([])
   const [sharedGoalTitle, setSharedGoalTitle] = useState('')
   const [sharedGoalDescription, setSharedGoalDescription] = useState('')
   const [sharedGoalTarget, setSharedGoalTarget] = useState('')
   const [thrustArea, setThrustArea] = useState('')
   const [primaryOwner, setPrimaryOwner] = useState('')
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function load() {
+      const [employeeRows, thrustAreaRows] = await Promise.all([
+        getProfilesByRole('employee'),
+        getThrustAreaNames(),
+      ])
+      if (!cancelled) {
+        setEmployees(employeeRows)
+        setThrustAreas(thrustAreaRows)
+      }
+    }
+
+    load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!liveProfile) {
+      setSharedGoals([])
+      return
+    }
+
+    let cancelled = false
+    getSharedGoalsForProfile(liveProfile).then((rows) => {
+      if (!cancelled) {
+        setSharedGoals(rows)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [liveProfile])
 
   const toggleEmployee = (employeeId: string) => {
     setSelectedEmployees((prev) =>
@@ -47,10 +96,10 @@ export default function AdminSharedGoalsPage() {
   }
 
   const selectAllEmployees = () => {
-    if (selectedEmployees.length === mockEmployees.length) {
+    if (selectedEmployees.length === employees.length) {
       setSelectedEmployees([])
     } else {
-      setSelectedEmployees(mockEmployees.map(e => e.id))
+      setSelectedEmployees(employees.map(e => e.id))
     }
   }
 
@@ -71,7 +120,7 @@ export default function AdminSharedGoalsPage() {
     setSelectedEmployees([])
   }
 
-  const getStatusBadges = (goal: SharedGoal) => {
+  const getStatusBadges = (goal: SharedGoalRecord) => {
     const badges = []
     badges.push(
       <Badge key="shared" variant="secondary" className="bg-primary/10 text-primary">
@@ -121,7 +170,7 @@ export default function AdminSharedGoalsPage() {
                   <Label htmlFor="kpiTitle">KPI Title *</Label>
                   <Input
                     id="kpiTitle"
-                    placeholder="e.g., Complete Cloud Architecture Certification"
+                    placeholder="Shared KPI title"
                     value={sharedGoalTitle}
                     onChange={(e) => setSharedGoalTitle(e.target.value)}
                   />
@@ -146,7 +195,7 @@ export default function AdminSharedGoalsPage() {
                         <SelectValue placeholder="Select thrust area" />
                       </SelectTrigger>
                       <SelectContent>
-                        {thrustAreas.map((area) => (
+                          {thrustAreas.map((area) => (
                           <SelectItem key={area} value={area}>
                             {area}
                           </SelectItem>
@@ -174,7 +223,7 @@ export default function AdminSharedGoalsPage() {
                       <SelectValue placeholder="Select primary owner" />
                     </SelectTrigger>
                     <SelectContent>
-                      {mockEmployees.map((employee) => (
+                      {employees.map((employee) => (
                         <SelectItem key={employee.id} value={employee.id}>
                           {employee.name} ({employee.department})
                         </SelectItem>
@@ -193,11 +242,13 @@ export default function AdminSharedGoalsPage() {
                     onClick={selectAllEmployees}
                     className="h-auto py-1 px-2 text-xs"
                   >
-                    {selectedEmployees.length === mockEmployees.length ? 'Deselect All' : 'Select All'}
+                    {employees.length > 0 && selectedEmployees.length === employees.length
+                      ? 'Deselect All'
+                      : 'Select All'}
                   </Button>
                 </div>
                 <div className="max-h-[280px] overflow-y-auto rounded-lg border border-border p-3 space-y-2">
-                  {mockEmployees.map((employee) => (
+                  {employees.map((employee) => (
                     <div
                       key={employee.id}
                       className="flex items-center space-x-2"
@@ -234,7 +285,8 @@ export default function AdminSharedGoalsPage() {
                   !sharedGoalTarget ||
                   !thrustArea ||
                   !primaryOwner ||
-                  selectedEmployees.length === 0
+                  selectedEmployees.length === 0 ||
+                  employees.length === 0
                 }
               >
                 <Send className="mr-2 h-4 w-4" />
@@ -267,9 +319,20 @@ export default function AdminSharedGoalsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sharedGoals.map((goal, index) => (
+                {sharedGoals.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="py-10 text-center">
+                      <div className="mx-auto flex max-w-sm flex-col items-center gap-2 text-sm text-muted-foreground">
+                        <Share2 className="h-8 w-8 text-primary" />
+                        <p className="font-medium text-foreground">No shared goals yet.</p>
+                        <p>Live shared goals will appear here after they are created.</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : sharedGoals.map((goal, index) => (
                   <TableRow
                     key={goal.id}
+                    id={goal.id}
                     className={index % 2 === 0 ? 'bg-card' : 'bg-muted/30'}
                   >
                     <TableCell>
@@ -320,8 +383,10 @@ export default function AdminSharedGoalsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm">
-                        View
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link href={`/admin/shared-goals#${goal.id}`}>
+                          View
+                        </Link>
                       </Button>
                     </TableCell>
                   </TableRow>
