@@ -29,6 +29,7 @@ interface HeaderProps {
   user: User
   title?: string
   subtitle?: string
+  showRoleSwitcher?: boolean
 }
 
 const demoNotifications: NotificationRow[] = [
@@ -64,7 +65,7 @@ const demoNotifications: NotificationRow[] = [
   },
 ]
 
-export function Header({ user, title, subtitle }: HeaderProps) {
+export function Header({ user, title, subtitle, showRoleSwitcher = true }: HeaderProps) {
   const [liveNotifications, setLiveNotifications] = useState<NotificationRow[] | null>(null)
   const canFetchNotifications = isSupabaseConfigured() && isRealUuid(user.id)
 
@@ -164,40 +165,45 @@ export function Header({ user, title, subtitle }: HeaderProps) {
           />
         </div>
 
-        {/* Role Switch Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-9 gap-2 border-border bg-transparent text-xs font-medium">
-              <span className="hidden sm:inline">Viewing as</span>
-              <Badge variant="outline" className={roleColor}>
-                {roleLabel}
-              </Badge>
-              <ChevronDown className="h-3 w-3 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Switch Demo View</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href="/employee" className="flex items-center gap-2 cursor-pointer">
-                <UserCircle className="h-4 w-4 text-success" />
-                Employee View
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/manager" className="flex items-center gap-2 cursor-pointer">
-                <Users className="h-4 w-4 text-warning-foreground" />
-                Manager View
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/admin" className="flex items-center gap-2 cursor-pointer">
-                <Shield className="h-4 w-4 text-primary" />
-                Admin / HR View
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {showRoleSwitcher ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 gap-2 border-border bg-transparent text-xs font-medium">
+                <span className="hidden sm:inline">Viewing as</span>
+                <Badge variant="outline" className={roleColor}>
+                  {roleLabel}
+                </Badge>
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel className="text-xs text-muted-foreground">Switch Demo View</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/employee" className="flex items-center gap-2 cursor-pointer">
+                  <UserCircle className="h-4 w-4 text-success" />
+                  Employee View
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/manager" className="flex items-center gap-2 cursor-pointer">
+                  <Users className="h-4 w-4 text-warning-foreground" />
+                  Manager View
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/admin" className="flex items-center gap-2 cursor-pointer">
+                  <Shield className="h-4 w-4 text-primary" />
+                  Admin / HR View
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <Badge variant="outline" className={roleColor}>
+            {roleLabel}
+          </Badge>
+        )}
 
         {/* Notifications */}
         <DropdownMenu>

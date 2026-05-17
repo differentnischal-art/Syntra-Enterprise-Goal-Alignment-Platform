@@ -27,8 +27,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { HeroAnimation } from './hero-animation'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
 
 export function LandingPage() {
+  const showDemoAccess = !isSupabaseConfigured()
   const lifecycleSteps = [
     { title: 'Goal Creation', icon: Target },
     { title: 'Manager Approval', icon: ClipboardCheck },
@@ -98,9 +100,9 @@ export function LandingPage() {
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="#demo">
+              <Link href={showDemoAccess ? '#demo' : '/login'}>
                 <Button size="lg" className="gap-2 px-8 shadow-lg shadow-primary/20">
-                  Open Demo
+                  {showDemoAccess ? 'Open Demo' : 'Sign In'}
                   <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
@@ -304,68 +306,69 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* Demo Access Section */}
-      <section id="demo" className="py-20 bg-white">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-foreground sm:text-4xl">Demo Access</h2>
-            <p className="mt-4 text-lg text-muted-foreground">Explore the portal from each role&apos;s perspective</p>
+      {showDemoAccess && (
+        <section id="demo" className="py-20 bg-white">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl font-bold text-foreground sm:text-4xl">Demo Access</h2>
+              <p className="mt-4 text-lg text-muted-foreground">Explore the portal from each role&apos;s perspective</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+              {/* Employee Demo */}
+              <Card className="border-success/20 bg-gradient-to-br from-card to-success/5 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                <CardContent className="pt-8 pb-6 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-success/10 mx-auto mb-5">
+                    <User className="h-8 w-8 text-success" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Employee Demo</h3>
+                  <p className="text-sm text-muted-foreground mb-6">Create goals and track progress</p>
+                  <Link href="/employee">
+                    <Button className="w-full bg-success hover:bg-success/90 text-success-foreground">
+                      Enter as Employee
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              {/* Manager Demo */}
+              <Card className="border-warning/20 bg-gradient-to-br from-card to-warning/5 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                <CardContent className="pt-8 pb-6 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warning/10 mx-auto mb-5">
+                    <Users className="h-8 w-8 text-warning-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Manager Demo</h3>
+                  <p className="text-sm text-muted-foreground mb-6">Review and approve team goals</p>
+                  <Link href="/manager">
+                    <Button className="w-full bg-warning hover:bg-warning/90 text-warning-foreground">
+                      Enter as Manager
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+
+              {/* Admin Demo */}
+              <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
+                <CardContent className="pt-8 pb-6 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mx-auto mb-5">
+                    <Shield className="h-8 w-8 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">Admin / HR Demo</h3>
+                  <p className="text-sm text-muted-foreground mb-6">Manage cycles and compliance</p>
+                  <Link href="/admin">
+                    <Button className="w-full">
+                      Enter as Admin
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            {/* Employee Demo */}
-            <Card className="border-success/20 bg-gradient-to-br from-card to-success/5 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-              <CardContent className="pt-8 pb-6 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-success/10 mx-auto mb-5">
-                  <User className="h-8 w-8 text-success" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Employee Demo</h3>
-                <p className="text-sm text-muted-foreground mb-6">Create goals and track progress</p>
-                <Link href="/employee">
-                  <Button className="w-full bg-success hover:bg-success/90 text-success-foreground">
-                    Enter as Employee
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* Manager Demo */}
-            <Card className="border-warning/20 bg-gradient-to-br from-card to-warning/5 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-              <CardContent className="pt-8 pb-6 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-warning/10 mx-auto mb-5">
-                  <Users className="h-8 w-8 text-warning-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Manager Demo</h3>
-                <p className="text-sm text-muted-foreground mb-6">Review and approve team goals</p>
-                <Link href="/manager">
-                  <Button className="w-full bg-warning hover:bg-warning/90 text-warning-foreground">
-                    Enter as Manager
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* Admin Demo */}
-            <Card className="border-primary/20 bg-gradient-to-br from-card to-primary/5 hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-              <CardContent className="pt-8 pb-6 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mx-auto mb-5">
-                  <Shield className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-lg font-semibold text-foreground mb-2">Admin / HR Demo</h3>
-                <p className="text-sm text-muted-foreground mb-6">Manage cycles and compliance</p>
-                <Link href="/admin">
-                  <Button className="w-full">
-                    Enter as Admin
-                    <ArrowRight className="h-4 w-4 ml-2" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-border/40 bg-slate-50/50 py-12">

@@ -30,6 +30,7 @@ import {
 
 interface SidebarProps {
   role: UserRole
+  showDemoViews?: boolean
 }
 
 const employeeNavItems = [
@@ -57,7 +58,7 @@ const adminNavItems = [
   { href: '/admin/reports-export', label: 'Reports & Export', icon: BarChart3 },
 ]
 
-export function Sidebar({ role }: SidebarProps) {
+export function Sidebar({ role, showDemoViews = true }: SidebarProps) {
   const pathname = usePathname()
   // First Supabase slice: active cycle from DB when configured; mock fallback during migration.
   const [activeGoalCycle, setActiveGoalCycle] = useState<GoalCycle>(mockGoalCycle)
@@ -132,50 +133,51 @@ export function Sidebar({ role }: SidebarProps) {
         })}
       </nav>
 
-      {/* Demo Role Switcher */}
-      <div className="border-t border-sidebar-border px-3 py-3">
-        <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-          Demo Views
-        </p>
-        <div className="space-y-0.5">
-          <Link
-            href="/employee"
-            className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-              role === 'employee'
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-            )}
-          >
-            <UserCircle className="h-4 w-4" />
-            Employee
-          </Link>
-          <Link
-            href="/manager"
-            className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-              role === 'manager'
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-            )}
-          >
-            <Users className="h-4 w-4" />
-            Manager
-          </Link>
-          <Link
-            href="/admin"
-            className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
-              role === 'admin'
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-            )}
-          >
-            <Shield className="h-4 w-4" />
-            Admin / HR
-          </Link>
+      {showDemoViews && (
+        <div className="border-t border-sidebar-border px-3 py-3">
+          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+            Demo Views
+          </p>
+          <div className="space-y-0.5">
+            <Link
+              href="/employee"
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                role === 'employee'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+              )}
+            >
+              <UserCircle className="h-4 w-4" />
+              Employee
+            </Link>
+            <Link
+              href="/manager"
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                role === 'manager'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+              )}
+            >
+              <Users className="h-4 w-4" />
+              Manager
+            </Link>
+            <Link
+              href="/admin"
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                role === 'admin'
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                  : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+              )}
+            >
+              <Shield className="h-4 w-4" />
+              Admin / HR
+            </Link>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Cycle Card */}
       <div className="border-t border-sidebar-border p-3">

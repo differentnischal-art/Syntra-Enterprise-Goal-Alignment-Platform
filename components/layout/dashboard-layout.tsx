@@ -1,14 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { UserRole, type GoalCycle } from '@/lib/types'
 import { Sidebar } from './sidebar'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
-import { Menu, Layers, Clock } from 'lucide-react'
+import { AlertCircle, Menu, Layers, Clock } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { mockGoalCycle } from '@/lib/mock-data'
 import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
 import Link from 'next/link'
 
 interface DashboardLayoutProps {
@@ -17,9 +20,17 @@ interface DashboardLayoutProps {
 }
 
 export function DashboardLayout({ children, role }: DashboardLayoutProps) {
+  const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isAccessDeniedNotice, setIsAccessDeniedNotice] = useState(false)
   // First Supabase slice: active cycle from DB when configured; mock fallback during migration.
   const [activeGoalCycle, setActiveGoalCycle] = useState<GoalCycle>(mockGoalCycle)
+  const {
+    liveProfile,
+    isLoading: isProfileLoading,
+    isUsingMockFallback,
+  } = useCurrentProfile()
+  const effectiveRole = liveProfile?.role ?? role
 
   useEffect(() => {
     let cancelled = false
@@ -32,6 +43,40 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    setIsAccessDeniedNotice(
+      new URLSearchParams(window.location.search).get('access') === 'denied'
+    )
+  }, [])
+
+  useEffect(() => {
+    if (isProfileLoading || !liveProfile || liveProfile.role === role) {
+      return
+    }
+
+    const path =
+      liveProfile.role === 'admin'
+        ? '/admin'
+        : liveProfile.role === 'manager'
+          ? '/manager'
+          : '/employee'
+
+    router.replace(`${path}?access=denied`)
+  }, [isProfileLoading, liveProfile, role, router])
+
+  if (!isProfileLoading && liveProfile && liveProfile.role !== role) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <Alert className="border-warning/30 bg-warning/5">
+          <AlertCircle className="h-4 w-4 text-warning-foreground" />
+          <AlertDescription className="text-warning-foreground">
+            Access denied for your role. Redirecting to your dashboard...
+          </AlertDescription>
+        </Alert>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -59,7 +104,11 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
               
               {/* Navigation */}
               <nav className="flex-1 px-3 py-4">
-                <MobileNav role={role} onNavigate={() => setSidebarOpen(false)} />
+                <MobileNav
+                  role={effectiveRole}
+                  showDemoViews={isUsingMockFallback}
+                  onNavigate={() => setSidebarOpen(false)}
+                />
               </nav>
 
               {/* Cycle Card */}
@@ -92,11 +141,16 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
 
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
-        <Sidebar role={role} />
+        <Sidebar role={effectiveRole} showDemoViews={isUsingMockFallback} />
       </div>
 
       {/* Main Content */}
       <main className="lg:ml-64">
+        {isAccessDeniedNotice && (
+          <div className="border-b border-warning/30 bg-warning/5 px-6 py-2 text-xs text-warning-foreground">
+            Access denied for your role. You have been redirected to your dashboard.
+          </div>
+        )}
         {children}
       </main>
     </div>
@@ -104,7 +158,15 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
 }
 
 // Mobile navigation items
-function MobileNav({ role, onNavigate }: { role: UserRole; onNavigate: () => void }) {
+function MobileNav({
+  role,
+  showDemoViews,
+  onNavigate,
+}: {
+  role: UserRole
+  showDemoViews: boolean
+  onNavigate: () => void
+}) {
   const navItems = role === 'admin'
     ? [
         { href: '/admin', label: 'Dashboard' },
@@ -145,19 +207,23 @@ function MobileNav({ role, onNavigate }: { role: UserRole; onNavigate: () => voi
           {item.label}
         </Link>
       ))}
-      <div className="my-4 border-t border-sidebar-border" />
-      <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-        Demo Views
-      </p>
-      <Link href="/employee" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">
-        Employee
-      </Link>
-      <Link href="/manager" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">
-        Manager
-      </Link>
-      <Link href="/admin" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">
-        Admin / HR
-      </Link>
+      {showDemoViews && (
+        <>
+          <div className="my-4 border-t border-sidebar-border" />
+          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+            Demo Views
+          </p>
+          <Link href="/employee" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">
+            Employee
+          </Link>
+          <Link href="/manager" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">
+            Manager
+          </Link>
+          <Link href="/admin" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">
+            Admin / HR
+          </Link>
+        </>
+      )}
       <div className="my-4 border-t border-sidebar-border" />
       <Link href="/" onClick={onNavigate} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground">
         Sign Out

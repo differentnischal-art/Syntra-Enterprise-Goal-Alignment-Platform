@@ -51,7 +51,12 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
         </div>
       )}
 
-      <Header user={profile} title={title} subtitle={subtitle} />
+      <Header
+        user={profile}
+        title={title}
+        subtitle={subtitle}
+        showRoleSwitcher={isUsingMockFallback}
+      />
     </>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { mockAdminUser, mockAuditLogs } from '@/lib/mock-data'
+import { mockAuditLogs } from '@/lib/mock-data'
 import { Download } from 'lucide-react'
 
 export default function AdminAuditLogPage() {
@@ -32,7 +32,7 @@ export default function AdminAuditLogPage() {
 
   return (
     <DashboardLayout role="admin">
-      <Header user={mockAdminUser} title="Audit Log" />
+      <DashboardHeader title="Audit Log" />
 
       <div className="p-6">
         <Card className="shadow-sm">

@@ -1,7 +1,7 @@
 'use client'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { mockAdminUser, mockEmployees } from '@/lib/mock-data'
+import { mockEmployees } from '@/lib/mock-data'
 import { Search, UserPlus } from 'lucide-react'
 import { useState } from 'react'
 
@@ -29,7 +29,7 @@ export default function AdminEmployeesPage() {
 
   return (
     <DashboardLayout role="admin">
-      <Header user={mockAdminUser} title="All Employees" />
+      <DashboardHeader title="All Employees" />
 
       <div className="p-6">
         <Card className="shadow-sm">

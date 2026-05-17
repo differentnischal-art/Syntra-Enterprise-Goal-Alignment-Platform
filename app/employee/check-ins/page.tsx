@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { mockUser, mockGoals, mockCheckIns } from '@/lib/mock-data'
+import { mockGoals, mockCheckIns } from '@/lib/mock-data'
 import { Goal, GoalStatus, CheckIn } from '@/lib/types'
 import { Lock } from 'lucide-react'
 
@@ -100,7 +100,7 @@ export default function EmployeeCheckInsPage() {
 
   return (
     <DashboardLayout role="employee">
-      <Header user={mockUser} title="Quarterly Check-ins" />
+      <DashboardHeader title="Quarterly Check-ins" />
 
       <div className="p-6 space-y-6">
         {/* Quarter Tabs */}

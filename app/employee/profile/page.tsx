@@ -1,7 +1,7 @@
 'use client'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,7 +20,7 @@ export default function EmployeeProfilePage() {
 
   return (
     <DashboardLayout role="employee">
-      <Header user={mockUser} title="Profile" />
+      <DashboardHeader title="Profile" />
 
       <div className="p-6 max-w-2xl">
         <Card className="shadow-sm">

@@ -1,11 +1,11 @@
 'use client'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { SummaryCard } from '@/components/dashboard/summary-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { mockManagerUser, mockTeamMembers, mockTeamGoals } from '@/lib/mock-data'
+import { mockTeamMembers, mockTeamGoals } from '@/lib/mock-data'
 import { BarChart3, Download, Users, Target, TrendingUp, CheckCircle2 } from 'lucide-react'
 
 export default function ManagerReportsPage() {
@@ -23,7 +23,7 @@ export default function ManagerReportsPage() {
 
   return (
     <DashboardLayout role="manager">
-      <Header user={mockManagerUser} title="Reports" />
+      <DashboardHeader title="Reports" />
 
       <div className="p-6 space-y-6">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

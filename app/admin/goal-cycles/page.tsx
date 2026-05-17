@@ -1,7 +1,7 @@
 'use client'
 
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
-import { Header } from '@/components/layout/header'
+import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { mockAdminUser } from '@/lib/mock-data'
 import { Plus, Calendar } from 'lucide-react'
 
 const goalCycles = [
@@ -77,7 +76,7 @@ export default function AdminGoalCyclesPage() {
 
   return (
     <DashboardLayout role="admin">
-      <Header user={mockAdminUser} title="Goal Cycles" />
+      <DashboardHeader title="Goal Cycles" />
 
       <div className="p-6">
         <Card className="shadow-sm">

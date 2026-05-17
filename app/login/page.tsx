@@ -213,27 +213,26 @@ export default function LoginPage() {
               )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="role" className="text-sm font-medium">
-                Select Role
-                {supabaseEnabled && (
-                  <span className="font-normal text-muted-foreground"> (for demo sign-up)</span>
+            {!supabaseEnabled && (
+              <div className="space-y-2">
+                <Label htmlFor="role" className="text-sm font-medium">
+                  Select Role
+                </Label>
+                <Select value={role} onValueChange={setRole}>
+                  <SelectTrigger className={`h-10 ${errors.role ? 'border-destructive' : ''}`}>
+                    <SelectValue placeholder="Choose your role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="employee">Employee</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="admin">Administrator / HR</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.role && (
+                  <p className="text-xs text-destructive">{errors.role}</p>
                 )}
-              </Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger className={`h-10 ${errors.role ? 'border-destructive' : ''}`}>
-                  <SelectValue placeholder="Choose your role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="employee">Employee</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="admin">Administrator / HR</SelectItem>
-                </SelectContent>
-              </Select>
-              {errors.role && (
-                <p className="text-xs text-destructive">{errors.role}</p>
-              )}
-            </div>
+              </div>
+            )}
 
             {authError && (
               <p className="text-xs text-destructive text-center">{authError}</p>
@@ -250,18 +249,6 @@ export default function LoginPage() {
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
 
-            {supabaseEnabled && (
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full h-9 text-xs text-muted-foreground"
-                disabled={isSigningUp}
-                onClick={handleCreateDemoAccount}
-              >
-                {isSigningUp ? 'Creating account...' : 'Create demo account'}
-              </Button>
-            )}
-
             <p className="text-center text-xs text-muted-foreground">
               Having trouble signing in? Contact{' '}
               <a href="mailto:support@alignos.com" className="text-primary hover:underline">
@@ -271,39 +258,43 @@ export default function LoginPage() {
           </form>
         </CardContent>
 
-        <div className="px-6">
-          <Separator />
-        </div>
+        {!supabaseEnabled && (
+          <>
+            <div className="px-6">
+              <Separator />
+            </div>
 
-        <CardFooter className="flex flex-col space-y-4 pt-6">
-          <p className="text-xs font-medium text-muted-foreground text-center">Quick Demo Access</p>
-          <div className="flex w-full gap-2">
-            <Button 
-              variant="outline" 
-              className="flex-1 h-10 gap-2 border-success/30 text-success hover:bg-success/5 hover:text-success hover:border-success/50"
-              onClick={() => handleQuickAccess('employee')}
-            >
-              <UserCircle className="h-4 w-4" />
-              <span className="hidden sm:inline">Employee</span>
-            </Button>
-            <Button 
-              variant="outline" 
-              className="flex-1 h-10 gap-2 border-warning/30 text-warning-foreground hover:bg-warning/5 hover:text-warning-foreground hover:border-warning/50"
-              onClick={() => handleQuickAccess('manager')}
-            >
-              <Users className="h-4 w-4" />
-              <span className="hidden sm:inline">Manager</span>
-            </Button>
-            <Button 
-              variant="outline" 
-              className="flex-1 h-10 gap-2 border-primary/30 text-primary hover:bg-primary/5 hover:text-primary hover:border-primary/50"
-              onClick={() => handleQuickAccess('admin')}
-            >
-              <Shield className="h-4 w-4" />
-              <span className="hidden sm:inline">Admin</span>
-            </Button>
-          </div>
-        </CardFooter>
+            <CardFooter className="flex flex-col space-y-4 pt-6">
+              <p className="text-xs font-medium text-muted-foreground text-center">Quick Demo Access</p>
+              <div className="flex w-full gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 h-10 gap-2 border-success/30 text-success hover:bg-success/5 hover:text-success hover:border-success/50"
+                  onClick={() => handleQuickAccess('employee')}
+                >
+                  <UserCircle className="h-4 w-4" />
+                  <span className="hidden sm:inline">Employee</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 h-10 gap-2 border-warning/30 text-warning-foreground hover:bg-warning/5 hover:text-warning-foreground hover:border-warning/50"
+                  onClick={() => handleQuickAccess('manager')}
+                >
+                  <Users className="h-4 w-4" />
+                  <span className="hidden sm:inline">Manager</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 h-10 gap-2 border-primary/30 text-primary hover:bg-primary/5 hover:text-primary hover:border-primary/50"
+                  onClick={() => handleQuickAccess('admin')}
+                >
+                  <Shield className="h-4 w-4" />
+                  <span className="hidden sm:inline">Admin</span>
+                </Button>
+              </div>
+            </CardFooter>
+          </>
+        )}
       </Card>
     </div>
   )
