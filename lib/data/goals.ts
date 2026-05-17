@@ -95,9 +95,12 @@ export type GoalSheetMappingContext = {
 const UOM_TO_DB: Record<UnitOfMeasurement, DbUomType> = {
   'numeric-higher-better': 'numeric_higher_better',
   'numeric-lower-better': 'numeric_lower_better',
+
+  // FIXED
   percentage: 'percentage',
-  'percentage-higher-better': 'percentage_higher_better',
-  'percentage-lower-better': 'percentage_lower_better',
+  'percentage-higher-better': 'percentage',
+  'percentage-lower-better': 'percentage',
+
   timeline: 'timeline',
   'zero-based': 'zero_based',
 }
