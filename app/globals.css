@@ -322,3 +322,110 @@
     animation: none !important;
   }
 }
+
+@keyframes loginBlobFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -18px, 0) scale(1.05);
+  }
+}
+
+@keyframes loginGridShift {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(36px, 36px, 0);
+  }
+}
+
+@keyframes loginFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes loginFlowTrace {
+  0%,
+  100% {
+    opacity: 0.12;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+@keyframes loginFlowDot {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.login-grid {
+  background-image:
+    linear-gradient(rgba(196, 181, 253, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(196, 181, 253, 0.12) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(circle at center, black 24%, transparent 80%);
+  animation: loginGridShift 18s linear infinite;
+}
+
+.login-radial {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(139, 92, 246, 0.24), transparent 24%),
+    radial-gradient(circle at 82% 18%, rgba(217, 70, 239, 0.18), transparent 24%),
+    radial-gradient(circle at 52% 90%, rgba(129, 140, 248, 0.18), transparent 28%);
+}
+
+.login-blob {
+  animation: loginBlobFloat 12s ease-in-out infinite;
+}
+
+.login-blob-two {
+  animation-delay: 1.8s;
+}
+
+.login-blob-three {
+  animation-delay: 3.6s;
+}
+
+.login-visual-card {
+  animation: loginFloat 6s ease-in-out infinite;
+}
+
+.login-visual-card-two {
+  animation-delay: 1s;
+}
+
+.login-visual-card-three {
+  animation-delay: 2s;
+}
+
+.login-flow-trace {
+  animation: loginFlowTrace 3.4s ease-in-out infinite;
+}
+
+.login-flow-dot {
+  animation: loginFlowDot 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-grid,
+  .login-blob,
+  .login-visual-card,
+  .login-flow-trace,
+  .login-flow-dot {
+    animation: none !important;
+  }
+}
