@@ -35,17 +35,17 @@ type DbSharedGoalAssignment = {
 
 type DbSharedGoal = {
   id: string
-  title: string
+  title: string | null
   description: string | null
   thrust_area_id: string | null
-  uom_type: string
-  target: number
+  uom_type: string | null
+  target: number | null
   target_date: string | null
   synced_actual_achievement: number | null
-  status: 'active' | 'locked' | 'archived'
-  created_at: string
-  created_by: string
-  primary_owner_id: string
+  status: 'active' | 'locked' | 'archived' | null
+  created_at: string | null
+  created_by: string | null
+  primary_owner_id: string | null
   thrust_areas?: DbRelation<{ name: string }>
   primary_owner?: DbRelation<DbProfileRef>
   shared_goal_assignments?: DbSharedGoalAssignment[] | null
@@ -77,6 +77,47 @@ export type CreateSharedGoalInput = {
   createdBy: User
 }
 
+let hasWarnedMissingSharedGoalSchema = false
+
+function isMissingSharedGoalSchemaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+
+  const maybeError = error as { code?: string; message?: string }
+  const code = maybeError.code?.toUpperCase() ?? ''
+  const message = maybeError.message?.toLowerCase() ?? ''
+
+  return (
+    code === '42P01' ||
+    (code.startsWith('PGRST') && message.includes('schema cache')) ||
+    (
+      (message.includes('shared_goals') || message.includes('shared_goal_assignments')) &&
+      (
+        message.includes('schema cache') ||
+        message.includes('does not exist') ||
+        message.includes('could not find the table') ||
+        message.includes('relation') ||
+        message.includes('foreign key relationship')
+      )
+    )
+  )
+}
+
+function warnMissingSharedGoalSchema(context: string, error: unknown): void {
+  if (hasWarnedMissingSharedGoalSchema) return
+  hasWarnedMissingSharedGoalSchema = true
+
+  const message =
+    error && typeof error === 'object' && 'message' in error
+      ? String((error as { message?: unknown }).message)
+      : 'Unknown schema error'
+
+  console.warn(
+    `[${context}] Shared goal tables are not available in Supabase. ` +
+      'Apply supabase/migrations/010_shared_goals_live_repair.sql to the connected Supabase project. ' +
+      `Original error: ${message}`
+  )
+}
+
 function first<T>(relation: DbRelation<T>): T | null {
   if (!relation) return null
   return Array.isArray(relation) ? relation[0] ?? null : relation
@@ -105,13 +146,13 @@ function mapSharedGoalRow(row: DbSharedGoal): SharedGoalRecord {
 
   return {
     id: row.id,
-    title: row.title,
+    title: row.title ?? 'Untitled shared goal',
     description: row.description ?? '',
     thrustArea: first(row.thrust_areas)?.name ?? '-',
-    target: Number(row.target),
+    target: Number(row.target ?? 0),
     targetDate: row.target_date,
-    unitOfMeasurement: mapUomFromDb(row.uom_type) as UnitOfMeasurement,
-    primaryOwnerId: row.primary_owner_id,
+    unitOfMeasurement: mapUomFromDb(row.uom_type ?? 'numeric_higher_better') as UnitOfMeasurement,
+    primaryOwnerId: row.primary_owner_id ?? '',
     primaryOwnerName: owner?.full_name ?? 'Unassigned',
     linkedEmployees,
     syncedAchievement:
@@ -119,8 +160,8 @@ function mapSharedGoalRow(row: DbSharedGoal): SharedGoalRecord {
         ? null
         : Number(row.synced_actual_achievement),
     status: row.status === 'locked' ? 'locked' : 'active',
-    createdAt: row.created_at,
-    createdBy: row.created_by,
+    createdAt: row.created_at ?? '',
+    createdBy: row.created_by ?? '',
   }
 }
 
@@ -172,15 +213,45 @@ export async function getSharedGoalsForProfile(
 
   try {
     if (profile.role === 'employee') {
+      const { data: assignmentRows, error: assignmentError } = await supabase
+        .from('shared_goal_assignments')
+        .select('shared_goal_id')
+        .eq('employee_id', profile.id)
+
+      if (assignmentError) {
+        if (isMissingSharedGoalSchemaError(assignmentError)) {
+          warnMissingSharedGoalSchema('getSharedGoalsForProfile', assignmentError)
+        } else {
+          console.error('[getSharedGoalsForProfile] employee assignments error:', assignmentError.message)
+        }
+        return []
+      }
+
+      const sharedGoalIds = [
+        ...new Set(
+          (assignmentRows ?? [])
+            .map((row) => (row as { shared_goal_id?: string | null }).shared_goal_id)
+            .filter((id): id is string => Boolean(id))
+        ),
+      ]
+
+      if (sharedGoalIds.length === 0) {
+        return []
+      }
+
       const { data, error } = await supabase
         .from('shared_goals')
         .select(SHARED_GOAL_SELECT)
-        .eq('shared_goal_assignments.employee_id', profile.id)
+        .in('id', sharedGoalIds)
         .neq('status', 'archived')
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('[getSharedGoalsForProfile] employee error:', error.message)
+        if (isMissingSharedGoalSchemaError(error)) {
+          warnMissingSharedGoalSchema('getSharedGoalsForProfile', error)
+        } else {
+          console.error('[getSharedGoalsForProfile] employee error:', error.message)
+        }
         return []
       }
 
@@ -194,7 +265,11 @@ export async function getSharedGoalsForProfile(
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('[getSharedGoalsForProfile] error:', error.message)
+      if (isMissingSharedGoalSchemaError(error)) {
+        warnMissingSharedGoalSchema('getSharedGoalsForProfile', error)
+      } else {
+        console.error('[getSharedGoalsForProfile] error:', error.message)
+      }
       return []
     }
 
@@ -226,7 +301,11 @@ export async function getSharedGoalByIdForProfile(
       .maybeSingle()
 
     if (error) {
-      console.error('[getSharedGoalByIdForProfile] error:', error.message)
+      if (isMissingSharedGoalSchemaError(error)) {
+        warnMissingSharedGoalSchema('getSharedGoalByIdForProfile', error)
+      } else {
+        console.error('[getSharedGoalByIdForProfile] error:', error.message)
+      }
       return null
     }
 
@@ -287,6 +366,9 @@ export async function createSharedGoalWithAssignments(
       .single()
 
     if (goalError || !sharedGoal) {
+      if (goalError && isMissingSharedGoalSchemaError(goalError)) {
+        warnMissingSharedGoalSchema('createSharedGoalWithAssignments', goalError)
+      }
       return { success: false, error: goalError?.message ?? 'Could not create shared goal.' }
     }
 
@@ -294,7 +376,7 @@ export async function createSharedGoalWithAssignments(
     const assignments = input.employeeIds.map((employeeId) => ({
       shared_goal_id: sharedGoalId,
       employee_id: employeeId,
-      weightage: null,
+      weightage: 10,
     }))
 
     const { error: assignmentError } = await supabase
@@ -302,6 +384,9 @@ export async function createSharedGoalWithAssignments(
       .insert(assignments)
 
     if (assignmentError) {
+      if (isMissingSharedGoalSchemaError(assignmentError)) {
+        warnMissingSharedGoalSchema('createSharedGoalWithAssignments', assignmentError)
+      }
       return { success: false, error: assignmentError.message }
     }
 
