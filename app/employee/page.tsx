@@ -51,6 +51,8 @@ type DisplayActivity = {
     | 'checkin-submitted'
     | 'shared-goal-pushed'
     | 'comment-added'
+    | 'goal-unlocked'
+    | 'goal-resubmitted'
     | 'other'
   description: string
   timestamp: string
@@ -84,7 +86,12 @@ function mapAuditActivity(row: AuditLogRow): DisplayActivity {
             ? 'comment-added'
             : row.actionType === 'shared_goal_assigned'
               ? 'shared-goal-pushed'
-              : 'other'
+              : row.actionType === 'goal_sheet_unlocked'
+                ? 'goal-unlocked'
+                : row.actionType === 'goal_updated_after_unlock' ||
+                    row.description?.toLowerCase().includes('resubmitted')
+                  ? 'goal-resubmitted'
+                  : 'other'
 
   return {
     id: row.id,
@@ -147,6 +154,12 @@ export default function EmployeeDashboard() {
       : 0
   const nextCheckIn = 'Nov 30, 2025'
   const sheetStatus = goalSheet?.status
+  const isAdminUnlockedForRework = Boolean(
+    goalSheet &&
+      !goalSheet.isLocked &&
+      goalSheet.unlockedAt &&
+      (sheetStatus === 'returned' || sheetStatus === 'rework-required')
+  )
   const showEmptyState = dataSource === 'supabase-empty'
   const activityLogs: DisplayActivity[] = isSupabaseConfigured()
     ? (liveActivityLogs ?? []).map(mapAuditActivity)
@@ -154,7 +167,9 @@ export default function EmployeeDashboard() {
 
   const welcomeMessage = showEmptyState
     ? `No goal sheet created yet for ${activeCycle?.name ?? 'the active cycle'}. Create your goal sheet to begin.`
-    : sheetStatus === 'pending-approval' || sheetStatus === 'submitted'
+    : isAdminUnlockedForRework
+      ? 'Admin unlocked your goal sheet for rework. Edit and resubmit it for manager approval.'
+      : sheetStatus === 'pending-approval' || sheetStatus === 'submitted'
       ? 'Your goal sheet is pending manager approval.'
       : sheetStatus === 'draft' || sheetStatus === 'returned'
         ? 'Your goal sheet is in progress. Complete and submit when ready.'
@@ -197,6 +212,13 @@ export default function EmployeeDashboard() {
                 <Link href="/employee/create-goal-sheet">
                   <Target className="mr-2 h-4 w-4" />
                   Create Goal Sheet
+                </Link>
+              </Button>
+            ) : isAdminUnlockedForRework ? (
+              <Button asChild>
+                <Link href="/employee/create-goal-sheet">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Continue Rework
                 </Link>
               </Button>
             ) : (
@@ -297,6 +319,8 @@ export default function EmployeeDashboard() {
                   ? 'Not created yet'
                   : sheetStatus === 'locked' || sheetStatus === 'approved'
                     ? 'Locked for edits'
+                    : isAdminUnlockedForRework
+                      ? 'Unlocked for Rework'
                     : 'Current cycle sheet'}
               </p>
             </CardContent>
@@ -431,9 +455,12 @@ export default function EmployeeDashboard() {
                             ? 'bg-success/10 text-success'
                             : activity.type === 'goal-returned'
                               ? 'bg-destructive/10 text-destructive'
-                              : activity.type === 'checkin-submitted'
-                                ? 'bg-primary/10 text-primary'
-                                : 'bg-muted text-muted-foreground'
+                            : activity.type === 'checkin-submitted'
+                              ? 'bg-primary/10 text-primary'
+                              : activity.type === 'goal-unlocked' ||
+                                  activity.type === 'goal-resubmitted'
+                                ? 'bg-warning/10 text-warning-foreground'
+                              : 'bg-muted text-muted-foreground'
                         }
                       `}
                       >
@@ -451,6 +478,10 @@ export default function EmployeeDashboard() {
                         )}
                         {activity.type === 'shared-goal-pushed' && (
                           <Share2 className="h-3.5 w-3.5" />
+                        )}
+                        {(activity.type === 'goal-unlocked' ||
+                          activity.type === 'goal-resubmitted') && (
+                          <FileText className="h-3.5 w-3.5" />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">

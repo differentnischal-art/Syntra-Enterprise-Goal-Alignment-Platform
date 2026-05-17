@@ -27,8 +27,13 @@ type GoalSheetRow = {
   status: string
   total_weightage: number | null
   goals_count: number | null
+  is_locked: boolean | null
   submitted_at: string | null
   approved_at: string | null
+  locked_at: string | null
+  unlocked_at: string | null
+  unlocked_by: string | null
+  unlock_reason: string | null
   created_at: string
   updated_at: string
 }
@@ -242,7 +247,7 @@ async function loadAdminBaseData() {
       supabase
         .from('goal_sheets')
         .select(
-          'id, employee_id, manager_id, cycle_id, status, total_weightage, goals_count, submitted_at, approved_at, created_at, updated_at'
+          'id, employee_id, manager_id, cycle_id, status, total_weightage, goals_count, is_locked, submitted_at, approved_at, locked_at, unlocked_at, unlocked_by, unlock_reason, created_at, updated_at'
         ),
       supabase
         .from('goals')
@@ -305,7 +310,7 @@ export async function getAdminOverview(): Promise<AdminOverview> {
       ['submitted', 'pending_approval'].includes(sheet.status)
     ).length,
     approvedOrLockedGoalSheets: base.sheets.filter((sheet) =>
-      ['approved', 'locked'].includes(sheet.status)
+      ['approved', 'locked'].includes(sheet.status) || sheet.is_locked
     ).length,
     activeEscalations: escalations.length,
     recentAuditLogs: recentAuditLogs.slice(0, 5),
@@ -646,6 +651,7 @@ export async function getUnlockableGoalSheets(): Promise<
     employeeName: string
     department: string
     status: string
+    isLocked: boolean
     totalWeightage: number
     updatedAt: string
   }>
@@ -654,7 +660,7 @@ export async function getUnlockableGoalSheets(): Promise<
   if (!base) return []
   const profilesById = new Map(base.profiles.map((profile) => [profile.id, profile]))
   return base.sheets
-    .filter((sheet) => ['approved', 'locked'].includes(sheet.status))
+    .filter((sheet) => ['approved', 'locked'].includes(sheet.status) || sheet.is_locked)
     .map((sheet) => {
       const employee = profilesById.get(sheet.employee_id)
       return {
@@ -662,6 +668,7 @@ export async function getUnlockableGoalSheets(): Promise<
         employeeName: employee?.full_name ?? 'Employee',
         department: departmentName(employee),
         status: sheet.status,
+        isLocked: Boolean(sheet.is_locked || ['approved', 'locked'].includes(sheet.status)),
         totalWeightage: Number(sheet.total_weightage ?? 0),
         updatedAt: sheet.updated_at,
       }
@@ -670,10 +677,16 @@ export async function getUnlockableGoalSheets(): Promise<
 
 export async function unlockGoalSheet(
   goalSheetId: string,
-  admin: User
+  admin: User,
+  reason: string
 ): Promise<{ success: boolean; error: string | null }> {
   if (!isSupabaseConfigured() || !isRealUuid(goalSheetId) || !isRealUuid(admin.id)) {
     return { success: false, error: 'Live admin session is required.' }
+  }
+
+  const trimmedReason = reason.trim()
+  if (!trimmedReason) {
+    return { success: false, error: 'Unlock reason is required.' }
   }
 
   const supabase = createClient()
@@ -681,7 +694,7 @@ export async function unlockGoalSheet(
 
   const { data: sheet, error: loadError } = await supabase
     .from('goal_sheets')
-    .select('id, employee_id, status')
+    .select('id, employee_id, status, is_locked')
     .eq('id', goalSheetId)
     .maybeSingle()
 
@@ -690,9 +703,25 @@ export async function unlockGoalSheet(
   }
 
   const oldStatus = (sheet as { status: string }).status
+  if (!['approved', 'locked'].includes(oldStatus) && !(sheet as { is_locked?: boolean }).is_locked) {
+    return { success: false, error: 'Only approved or locked goal sheets can be unlocked.' }
+  }
+
+  const now = new Date().toISOString()
   const { error: updateSheetError } = await supabase
     .from('goal_sheets')
-    .update({ status: 'returned', locked_at: null })
+    .update({
+      status: 'returned',
+      is_locked: false,
+      locked_at: null,
+      unlocked_at: now,
+      unlocked_by: admin.id,
+      unlock_reason: trimmedReason,
+      submitted_at: null,
+      approved_at: null,
+      approved_by: null,
+      manager_comment: trimmedReason,
+    })
     .eq('id', goalSheetId)
 
   if (updateSheetError) {
@@ -701,7 +730,7 @@ export async function unlockGoalSheet(
 
   const { error: updateGoalsError } = await supabase
     .from('goals')
-    .update({ is_locked: false })
+    .update({ is_locked: false, approval_status: 'returned' })
     .eq('goal_sheet_id', goalSheetId)
 
   if (updateGoalsError) {
@@ -717,7 +746,15 @@ export async function unlockGoalSheet(
     fieldChanged: 'Goal Sheet Status',
     oldValue: oldStatus,
     newValue: 'returned',
-    description: 'Admin unlocked an approved/locked goal sheet for exception handling.',
+    description: `Admin unlocked goal sheet for rework: ${trimmedReason}`,
+  })
+
+  await createNotification({
+    userId: (sheet as { employee_id: string }).employee_id,
+    type: 'goal_returned',
+    title: 'Goal Sheet Unlocked',
+    message: 'Admin unlocked your goal sheet for rework. Edit and resubmit for manager approval.',
+    link: '/employee/my-goal-sheet',
   })
 
   return { success: true, error: null }

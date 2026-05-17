@@ -36,10 +36,14 @@ export type GoalSheetRecord = {
   status: GoalSheetStatus
   totalWeightage: number
   goalsCount: number
+  isLocked: boolean
   submittedAt: string | null
   approvedAt: string | null
   returnedAt: string | null
   lockedAt: string | null
+  unlockedAt: string | null
+  unlockedBy: string | null
+  unlockReason: string | null
   approvedBy: string | null
   managerComment: string | null
   createdAt: string
@@ -60,10 +64,14 @@ type DbGoalSheetRow = {
   status: GoalSheetStatus
   total_weightage: number
   goals_count: number
+  is_locked: boolean | null
   submitted_at: string | null
   approved_at: string | null
   returned_at: string | null
   locked_at: string | null
+  unlocked_at: string | null
+  unlocked_by: string | null
+  unlock_reason: string | null
   approved_by: string | null
   manager_comment: string | null
   created_at: string
@@ -78,10 +86,14 @@ const GOAL_SHEET_SELECT = `
   status,
   total_weightage,
   goals_count,
+  is_locked,
   submitted_at,
   approved_at,
   returned_at,
   locked_at,
+  unlocked_at,
+  unlocked_by,
+  unlock_reason,
   approved_by,
   manager_comment,
   created_at,
@@ -97,10 +109,14 @@ function mapRow(row: DbGoalSheetRow): GoalSheetRecord {
     status: row.status,
     totalWeightage: Number(row.total_weightage),
     goalsCount: row.goals_count,
+    isLocked: row.is_locked ?? (row.status === 'locked' || row.status === 'approved'),
     submittedAt: row.submitted_at,
     approvedAt: row.approved_at,
     returnedAt: row.returned_at,
     lockedAt: row.locked_at,
+    unlockedAt: row.unlocked_at,
+    unlockedBy: row.unlocked_by,
+    unlockReason: row.unlock_reason,
     approvedBy: row.approved_by,
     managerComment: row.manager_comment,
     createdAt: row.created_at,
@@ -128,6 +144,12 @@ export function isEditableGoalSheetStatus(status: string | null | undefined): bo
     status === 'rework_required' ||
     status === 'rework-required'
   )
+}
+
+export function isGoalSheetEditableForEmployee(
+  sheet: Pick<GoalSheetRecord, 'status' | 'isLocked'> | null | undefined
+): boolean {
+  return Boolean(sheet && !sheet.isLocked && isEditableGoalSheetStatus(sheet.status))
 }
 
 async function validateTimelineTargetsWithinCycle(
@@ -272,10 +294,14 @@ const GOAL_SHEET_WITH_GOALS_SELECT = `
   status,
   total_weightage,
   goals_count,
+  is_locked,
   submitted_at,
   approved_at,
   returned_at,
   locked_at,
+  unlocked_at,
+  unlocked_by,
+  unlock_reason,
   approved_by,
   manager_comment,
   created_at,
@@ -535,10 +561,10 @@ export async function saveGoalSheetDraft(
       return { goalSheet: null, error: 'Could not create or load goal sheet.' }
     }
 
-    if (!isEditableGoalSheetStatus(sheet.status)) {
+    if (!isGoalSheetEditableForEmployee(sheet)) {
       return {
         goalSheet: null,
-        error: 'Goal sheet can only be edited while in draft or returned for rework status.',
+        error: 'Goal sheet can only be edited while unlocked, draft, or returned for rework.',
       }
     }
 
@@ -557,6 +583,7 @@ export async function saveGoalSheetDraft(
       .update({
         manager_id: params.managerId ?? sheet.managerId,
         status: sheet.status === 'draft' ? 'draft' : sheet.status,
+        is_locked: false,
         total_weightage: totalWeightage,
         goals_count: goalsCount,
         submitted_at: null,
@@ -576,16 +603,32 @@ export async function saveGoalSheetDraft(
     const savedSheet = mapRow(data as DbGoalSheetRow)
 
     try {
+      if (sheet.unlockedAt) {
+        await createAuditLog({
+          actorId: params.employeeId,
+          actorRole: 'employee',
+          employeeId: params.employeeId,
+          goalSheetId: savedSheet.id,
+          actionType: 'goal_updated_after_unlock',
+          fieldChanged: 'Goal Sheet Goals',
+          oldValue: sheet.status,
+          newValue: 'submitted',
+          description: 'Employee edited goal sheet after admin unlock',
+        })
+      }
+
       await createAuditLog({
         actorId: params.employeeId,
         actorRole: 'employee',
         employeeId: params.employeeId,
         goalSheetId: savedSheet.id,
-        actionType: 'goal_draft_saved',
+        actionType: sheet.unlockedAt ? 'goal_updated_after_unlock' : 'goal_draft_saved',
         fieldChanged: 'Goal Sheet Draft',
         oldValue: sheet.status,
         newValue: savedSheet.status,
-        description: 'Employee saved goal sheet draft',
+        description: sheet.unlockedAt
+          ? 'Employee edited goal sheet after admin unlock'
+          : 'Employee saved goal sheet draft',
       })
     } catch (err) {
       console.error('[saveGoalSheetDraft] audit error:', err)
@@ -662,7 +705,7 @@ export async function submitGoalSheet(
       return { goalSheet: null, error: 'Could not create or load goal sheet.' }
     }
 
-    if (!isEditableGoalSheetStatus(sheet.status)) {
+    if (!isGoalSheetEditableForEmployee(sheet)) {
       return {
         goalSheet: null,
         error: 'Goal sheet has already been submitted or approved.',
@@ -685,10 +728,14 @@ export async function submitGoalSheet(
       .from('goal_sheets')
       .update({
         manager_id: params.managerId ?? sheet.managerId,
-        status: 'pending_approval',
+        status: 'submitted',
+        is_locked: false,
         total_weightage: 100,
         goals_count: goals.length,
         submitted_at: now,
+        approved_at: null,
+        approved_by: null,
+        locked_at: null,
       })
       .eq('id', sheet.id)
       .select(GOAL_SHEET_SELECT)
@@ -710,8 +757,10 @@ export async function submitGoalSheet(
         actionType: 'goal_submitted',
         fieldChanged: 'Goal Sheet Status',
         oldValue: sheet.status,
-        newValue: 'pending_approval',
-        description: 'Employee submitted a goal sheet for approval',
+        newValue: 'submitted',
+        description: sheet.unlockedAt
+          ? 'Goal sheet resubmitted after admin unlock'
+          : 'Employee submitted a goal sheet for approval',
       })
 
       if (savedSheet.managerId) {

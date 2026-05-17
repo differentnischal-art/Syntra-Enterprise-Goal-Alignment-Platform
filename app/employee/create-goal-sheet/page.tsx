@@ -51,9 +51,10 @@ interface DraftGoal {
   target: string
   targetDate: string
   weightage: string
+  isShared?: boolean
 }
 
-type DraftGoalTextField = Exclude<keyof DraftGoal, 'id' | 'unitOfMeasurement'>
+type DraftGoalTextField = Exclude<keyof DraftGoal, 'id' | 'unitOfMeasurement' | 'isShared'>
 
 const emptyGoal = (id: string): DraftGoal => ({
   id,
@@ -96,6 +97,7 @@ function toGoalInputs(goals: DraftGoal[]): GoalSheetGoalInput[] {
           : parseFloat(g.target) || 0,
       targetDate: g.unitOfMeasurement === 'timeline' ? g.targetDate : null,
       weightage: parseInt(g.weightage, 10) || 0,
+      isShared: g.isShared ?? false,
     }))
 }
 
@@ -155,6 +157,9 @@ export default function CreateGoalSheetPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoadingSheet, setIsLoadingSheet] = useState(false)
   const [goalSheetStatus, setGoalSheetStatus] = useState<GoalSheetStatus>('draft')
+  const [goalSheetIsLocked, setGoalSheetIsLocked] = useState(false)
+  const [unlockReason, setUnlockReason] = useState<string | null>(null)
+  const [unlockedAt, setUnlockedAt] = useState<string | null>(null)
   const [managerFeedback, setManagerFeedback] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -227,14 +232,20 @@ export default function CreateGoalSheetPage() {
                       : goal.target.toString(),
                 targetDate: goal.targetDate ?? '',
                 weightage: goal.weightage.toString(),
+                isShared: goal.isShared ?? false,
               }))
             : [emptyGoal('draft-1')]
         )
         setNextDraftId(Math.max(result.goals.length + 1, 2))
         setGoalSheetStatus(result.goalSheet.status)
+        setGoalSheetIsLocked(Boolean(result.goalSheet.isLocked))
+        setUnlockReason(result.goalSheet.unlockReason ?? null)
+        setUnlockedAt(result.goalSheet.unlockedAt ?? null)
         setManagerFeedback(result.goalSheet.managerComments)
-        setIsSubmitted(!isEditableGoalSheetStatus(result.goalSheet.status))
-        setCurrentStep(isEditableGoalSheetStatus(result.goalSheet.status) ? 1 : 4)
+        const editable =
+          !result.goalSheet.isLocked && isEditableGoalSheetStatus(result.goalSheet.status)
+        setIsSubmitted(!editable)
+        setCurrentStep(editable ? 1 : 4)
       }
 
       setIsLoadingSheet(false)
@@ -259,7 +270,12 @@ export default function CreateGoalSheetPage() {
     }
   }, [])
 
-  const isReadOnly = !isEditableGoalSheetStatus(goalSheetStatus)
+  const isReadOnly = !isEditableGoalSheetStatus(goalSheetStatus) || goalSheetIsLocked
+  const isAdminUnlockedForRework = Boolean(
+    !goalSheetIsLocked &&
+      unlockedAt &&
+      (goalSheetStatus === 'returned' || goalSheetStatus === 'rework-required')
+  )
 
   const totalWeightage = goals.reduce((sum, g) => sum + (parseInt(g.weightage, 10) || 0), 0)
   const goalsCount = goals.filter((g) => g.title.trim()).length
@@ -358,6 +374,9 @@ export default function CreateGoalSheetPage() {
 
         if (result.goalSheet) {
           setGoalSheetStatus(normalizeGoalSheetStatus(result.goalSheet.status))
+          setGoalSheetIsLocked(result.goalSheet.isLocked)
+          setUnlockReason(result.goalSheet.unlockReason)
+          setUnlockedAt(result.goalSheet.unlockedAt)
           setIsSubmitted(false)
         }
         setStatusMessage('Draft saved to Supabase.')
@@ -410,6 +429,7 @@ export default function CreateGoalSheetPage() {
         }
 
         setGoalSheetStatus('pending-approval')
+        setGoalSheetIsLocked(false)
         setIsSubmitted(true)
         setCurrentStep(4)
         setManagerFeedback(null)
@@ -450,7 +470,7 @@ export default function CreateGoalSheetPage() {
     </Badge>
   ) : goalSheetStatus === 'pending-approval' || goalSheetStatus === 'submitted' ? (
     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
-      Pending Approval
+      Submitted for Approval
     </Badge>
   ) : goalSheetStatus === 'returned' ||
     goalSheetStatus === 'rejected' ||
@@ -483,12 +503,23 @@ export default function CreateGoalSheetPage() {
           </Alert>
         )}
 
-        {isEditableGoalSheetStatus(goalSheetStatus) && managerFeedback && (
+        {isEditableGoalSheetStatus(goalSheetStatus) && managerFeedback && !isAdminUnlockedForRework && (
           <Alert className="border-destructive/30 bg-destructive/5">
             <AlertCircle className="h-4 w-4 text-destructive" />
             <AlertDescription className="text-destructive">
               <span className="font-medium">Manager feedback:</span>{' '}
               {managerFeedback}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {isAdminUnlockedForRework && (
+          <Alert className="border-warning/30 bg-warning/5">
+            <Info className="h-4 w-4 text-warning-foreground" />
+            <AlertDescription className="text-warning-foreground">
+              <span className="font-semibold">Admin unlocked this goal sheet for rework.</span>{' '}
+              You can edit and resubmit it for manager approval.
+              {unlockReason && <span className="mt-1 block">Reason: {unlockReason}</span>}
             </AlertDescription>
           </Alert>
         )}
@@ -519,7 +550,11 @@ export default function CreateGoalSheetPage() {
               onClick={handleSubmit}
             >
               <Send className="mr-2 h-4 w-4" />
-              {isSubmitting ? 'Submitting...' : 'Submit for Approval'}
+              {isSubmitting
+                ? 'Submitting...'
+                : isAdminUnlockedForRework
+                  ? 'Resubmit for Approval'
+                  : 'Submit for Approval'}
             </Button>
           </div>
         </div>
@@ -653,7 +688,14 @@ export default function CreateGoalSheetPage() {
             <Card key={goal.id} className="border-border/60 bg-card/95">
               <CardHeader className="border-b border-border/60 bg-gradient-to-r from-primary/5 via-transparent to-success/5 pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base font-semibold">Goal {index + 1}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base font-semibold">Goal {index + 1}</CardTitle>
+                    {goal.isShared && (
+                      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/25">
+                        Shared read-only
+                      </Badge>
+                    )}
+                  </div>
                   {goals.length > 1 && !isReadOnly && (
                     <Button
                       variant="ghost"
@@ -676,7 +718,7 @@ export default function CreateGoalSheetPage() {
                       placeholder="e.g., Improve API response time by 40%"
                       value={goal.title}
                       onChange={(e) => updateGoalFieldAt(index, 'title', e.target.value)}
-                      disabled={isReadOnly}
+                      disabled={isReadOnly || goal.isShared}
                     />
                   </div>
                   <div className="space-y-2">
@@ -684,7 +726,7 @@ export default function CreateGoalSheetPage() {
                     <Select
                       value={goal.thrustArea}
                       onValueChange={(value) => updateGoalFieldAt(index, 'thrustArea', value)}
-                      disabled={isReadOnly}
+                      disabled={isReadOnly || goal.isShared}
                     >
                       <SelectTrigger id={`thrust-${goal.id}`}>
                         <SelectValue placeholder="Select thrust area" />
@@ -708,7 +750,7 @@ export default function CreateGoalSheetPage() {
                     value={goal.description}
                     onChange={(e) => updateGoalFieldAt(index, 'description', e.target.value)}
                     rows={2}
-                    disabled={isReadOnly}
+                    disabled={isReadOnly || goal.isShared}
                   />
                 </div>
 
@@ -720,7 +762,7 @@ export default function CreateGoalSheetPage() {
                       onValueChange={(value) =>
                         updateGoalUnitAt(index, value as UnitOfMeasurement)
                       }
-                      disabled={isReadOnly}
+                      disabled={isReadOnly || goal.isShared}
                     >
                       <SelectTrigger id={`uom-${goal.id}`}>
                         <SelectValue />
@@ -744,7 +786,7 @@ export default function CreateGoalSheetPage() {
                         max={activeCycle?.endDate}
                         value={goal.targetDate}
                         onChange={(e) => updateGoalFieldAt(index, 'targetDate', e.target.value)}
-                        disabled={isReadOnly}
+                        disabled={isReadOnly || goal.isShared}
                         className={!hasValidTarget(goal, activeCycle) && goal.title.trim() ? 'border-destructive' : ''}
                       />
                     ) : (
@@ -756,8 +798,12 @@ export default function CreateGoalSheetPage() {
                         max={isPercentageUom(goal.unitOfMeasurement) ? 100 : undefined}
                         value={goal.unitOfMeasurement === 'zero-based' ? '0' : goal.target}
                         onChange={(e) => updateGoalFieldAt(index, 'target', e.target.value)}
-                        disabled={isReadOnly || goal.unitOfMeasurement === 'zero-based'}
-                        readOnly={goal.unitOfMeasurement === 'zero-based'}
+                        disabled={
+                          isReadOnly ||
+                          goal.isShared ||
+                          goal.unitOfMeasurement === 'zero-based'
+                        }
+                        readOnly={goal.unitOfMeasurement === 'zero-based' || goal.isShared}
                         className={!hasValidTarget(goal, activeCycle) && goal.title.trim() ? 'border-destructive' : ''}
                       />
                     )}
@@ -785,7 +831,7 @@ export default function CreateGoalSheetPage() {
                       max={100}
                       value={goal.weightage}
                       onChange={(e) => updateGoalFieldAt(index, 'weightage', e.target.value)}
-                      disabled={isReadOnly}
+                      disabled={isReadOnly || goal.isShared}
                       className={
                         parseInt(goal.weightage, 10) > 0 && parseInt(goal.weightage, 10) < 10
                           ? 'border-destructive'

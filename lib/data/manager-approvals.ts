@@ -39,6 +39,7 @@ type DbGoalSheetWithEmployee = DbGoalSheetRowWithRelations & {
 type DbGoalSheetActionContext = {
   employee_id: string
   status: string
+  is_locked?: boolean | null
 }
 
 export type ApprovalReviewEntry = {
@@ -90,10 +91,14 @@ const PENDING_GOAL_SHEET_SELECT = `
   status,
   total_weightage,
   goals_count,
+  is_locked,
   submitted_at,
   approved_at,
   returned_at,
   locked_at,
+  unlocked_at,
+  unlocked_by,
+  unlock_reason,
   approved_by,
   manager_comment,
   created_at,
@@ -243,7 +248,8 @@ export async function getManagerPendingGoalSheets(
       .from('goal_sheets')
       .select(PENDING_GOAL_SHEET_SELECT)
       .eq('manager_id', managerId)
-      .eq('status', 'pending_approval')
+      .in('status', ['submitted', 'pending_approval'])
+      .eq('is_locked', false)
       .order('submitted_at', { ascending: true })
 
     if (error) {
@@ -349,7 +355,7 @@ export async function saveManagerGoalEdits(
   try {
     const { data: sheetData, error: sheetError } = await supabase
       .from('goal_sheets')
-      .select('employee_id, manager_id, status')
+      .select('employee_id, manager_id, status, is_locked')
       .eq('id', goalSheetId)
       .eq('manager_id', managerId)
       .maybeSingle()
@@ -359,7 +365,11 @@ export async function saveManagerGoalEdits(
       return { success: false, error: sheetError.message }
     }
 
-    if (!sheetData || sheetData.status !== 'pending_approval') {
+    if (
+      !sheetData ||
+      !['submitted', 'pending_approval'].includes(sheetData.status) ||
+      sheetData.is_locked
+    ) {
       return { success: false, error: 'Only pending goal sheets can be edited by a manager.' }
     }
 
@@ -520,15 +530,25 @@ export async function approveGoalSheet(
   try {
     const { data: sheetContext } = await supabase
       .from('goal_sheets')
-      .select('employee_id, status')
+      .select('employee_id, status, is_locked')
       .eq('id', goalSheetId)
       .eq('manager_id', managerId)
       .maybeSingle()
+
+    const context = sheetContext as DbGoalSheetActionContext | null
+    if (
+      !context ||
+      context.is_locked ||
+      !['submitted', 'pending_approval'].includes(context.status)
+    ) {
+      return { success: false, error: 'Only submitted goal sheets can be approved.' }
+    }
 
     const { error: sheetError } = await supabase
       .from('goal_sheets')
       .update({
         status: 'locked',
+        is_locked: true,
         approved_at: now,
         locked_at: now,
         approved_by: managerId,
@@ -568,7 +588,6 @@ export async function approveGoalSheet(
     }
 
     try {
-      const context = sheetContext as DbGoalSheetActionContext | null
       if (context?.employee_id) {
         await createAuditLog({
           actorId: managerId,
@@ -579,7 +598,7 @@ export async function approveGoalSheet(
           fieldChanged: 'Goal Sheet Status',
           oldValue: context.status,
           newValue: 'locked',
-          description: 'Manager approved and locked the goal sheet',
+          description: 'Goal sheet approved and locked',
         })
 
         await createNotification({
@@ -631,15 +650,25 @@ export async function returnGoalSheetForRework(
   try {
     const { data: sheetContext } = await supabase
       .from('goal_sheets')
-      .select('employee_id, status')
+      .select('employee_id, status, is_locked')
       .eq('id', goalSheetId)
       .eq('manager_id', managerId)
       .maybeSingle()
+
+    const context = sheetContext as DbGoalSheetActionContext | null
+    if (
+      !context ||
+      context.is_locked ||
+      !['submitted', 'pending_approval'].includes(context.status)
+    ) {
+      return { success: false, error: 'Only submitted goal sheets can be returned for rework.' }
+    }
 
     const { error: sheetError } = await supabase
       .from('goal_sheets')
       .update({
         status: 'returned',
+        is_locked: false,
         submitted_at: null,
         approved_at: null,
         approved_by: null,
@@ -692,7 +721,7 @@ export async function returnGoalSheetForRework(
           fieldChanged: 'Goal Sheet Status',
           oldValue: context.status,
           newValue: 'returned',
-          description: 'Manager returned the goal sheet for rework',
+          description: `Manager returned goal sheet for rework: ${trimmed}`,
         })
 
         await createNotification({

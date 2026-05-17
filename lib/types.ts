@@ -63,8 +63,14 @@ export interface GoalSheet {
   status: GoalSheetStatus
   totalWeightage: number
   goalsCount: number
+  isLocked?: boolean
   submittedAt: string | null
   approvedAt: string | null
+  returnedAt?: string | null
+  lockedAt?: string | null
+  unlockedAt?: string | null
+  unlockedBy?: string | null
+  unlockReason?: string | null
   approvedBy: string | null
   managerComments: string | null
   lastUpdated: string

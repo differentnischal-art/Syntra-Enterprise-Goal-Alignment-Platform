@@ -56,6 +56,8 @@ type DisplayActivity = {
     | 'checkin-submitted'
     | 'shared-goal-pushed'
     | 'comment-added'
+    | 'goal-unlocked'
+    | 'goal-resubmitted'
     | 'other'
   description: string
   timestamp: string
@@ -91,7 +93,12 @@ function mapAuditActivity(row: AuditLogRow): DisplayActivity {
             ? 'comment-added'
             : row.actionType === 'shared_goal_assigned'
               ? 'shared-goal-pushed'
-              : 'other'
+              : row.actionType === 'goal_sheet_unlocked'
+                ? 'goal-unlocked'
+                : row.actionType === 'goal_updated_after_unlock' ||
+                    row.description?.toLowerCase().includes('resubmitted')
+                  ? 'goal-resubmitted'
+                  : 'other'
 
   return {
     id: row.id,
@@ -108,6 +115,29 @@ function sheetStatusForBadge(status: GoalSheetStatus): GoalSheetStatus {
 }
 
 function StatusBanner({ goalSheet }: { goalSheet: GoalSheet }) {
+  const isAdminUnlocked = Boolean(
+    !goalSheet.isLocked &&
+      goalSheet.unlockedAt &&
+      (goalSheet.status === 'returned' || goalSheet.status === 'rework-required')
+  )
+
+  if (isAdminUnlocked) {
+    return (
+      <Alert className="border-warning/30 bg-warning/5">
+        <AlertCircle className="h-4 w-4 text-warning-foreground" />
+        <AlertDescription className="text-warning-foreground">
+          <span className="font-semibold">
+            Admin unlocked this goal sheet for rework.
+          </span>{' '}
+          You can edit and resubmit it for manager approval.
+          {goalSheet.unlockReason && (
+            <span className="mt-1 block">Reason: {goalSheet.unlockReason}</span>
+          )}
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
   switch (goalSheet.status) {
     case 'draft':
       return (
@@ -200,10 +230,14 @@ export default function MyGoalSheetPage() {
     ? (liveActivityLogs ?? []).map(mapAuditActivity)
     : mockActivityLogs.map(mapMockActivity)
   const canEditGoalSheet =
-    goalSheet?.status === 'draft' ||
-    goalSheet?.status === 'returned' ||
-    goalSheet?.status === 'rejected' ||
-    goalSheet?.status === 'rework-required'
+    Boolean(
+      goalSheet &&
+        !goalSheet.isLocked &&
+        (goalSheet.status === 'draft' ||
+          goalSheet.status === 'returned' ||
+          goalSheet.status === 'rejected' ||
+          goalSheet.status === 'rework-required')
+    )
 
   const sourceBadgeLabel =
     dataSource === 'supabase'
@@ -339,7 +373,7 @@ export default function MyGoalSheetPage() {
                     <Button className="w-full justify-start" asChild>
                       <Link href="/employee/create-goal-sheet">
                         <FileText className="mr-2 h-4 w-4" />
-                        Continue Editing
+                        {goalSheet?.unlockedAt ? 'Continue Rework' : 'Edit Goals'}
                       </Link>
                     </Button>
                   )}
@@ -451,9 +485,12 @@ export default function MyGoalSheetPage() {
                           ? 'border-success text-success'
                           : activity.type === 'goal-returned'
                             ? 'border-destructive text-destructive'
-                            : activity.type === 'checkin-submitted'
-                              ? 'border-primary text-primary'
-                              : 'border-muted-foreground text-muted-foreground'
+                          : activity.type === 'checkin-submitted'
+                            ? 'border-primary text-primary'
+                            : activity.type === 'goal-unlocked' ||
+                                activity.type === 'goal-resubmitted'
+                              ? 'border-warning text-warning-foreground'
+                            : 'border-muted-foreground text-muted-foreground'
                       }
                     `}
                         >
@@ -471,6 +508,10 @@ export default function MyGoalSheetPage() {
                           )}
                           {activity.type === 'shared-goal-pushed' && (
                             <Share2 className="h-4 w-4" />
+                          )}
+                          {(activity.type === 'goal-unlocked' ||
+                            activity.type === 'goal-resubmitted') && (
+                            <FileText className="h-4 w-4" />
                           )}
                         </div>
                         {index < activityLogs.slice(0, 6).length - 1 && (

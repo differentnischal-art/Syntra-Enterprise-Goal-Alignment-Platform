@@ -9,6 +9,15 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import {
   Table,
   TableBody,
   TableCell,
@@ -56,6 +65,9 @@ export default function AdminDashboard() {
   const [overview, setOverview] = useState<AdminOverview | null>(null)
   const [unlockableSheets, setUnlockableSheets] = useState<UnlockableSheet[]>([])
   const [unlockingId, setUnlockingId] = useState<string | null>(null)
+  const [selectedUnlockSheet, setSelectedUnlockSheet] = useState<UnlockableSheet | null>(null)
+  const [unlockReason, setUnlockReason] = useState('')
+  const [unlockReasonError, setUnlockReasonError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const loadDashboard = async () => {
@@ -73,13 +85,31 @@ export default function AdminDashboard() {
     loadDashboard()
   }, [])
 
-  const handleUnlock = async (sheet: UnlockableSheet) => {
-    if (!liveProfile) return
+  const openUnlockDialog = (sheet: UnlockableSheet) => {
+    setSelectedUnlockSheet(sheet)
+    setUnlockReason('')
+    setUnlockReasonError(null)
+  }
+
+  const handleUnlock = async () => {
+    if (!liveProfile || !selectedUnlockSheet) return
+    const reason = unlockReason.trim()
+    if (!reason) {
+      setUnlockReasonError('Unlock reason is required.')
+      return
+    }
+
+    const sheet = selectedUnlockSheet
     setUnlockingId(sheet.id)
-    const result = await unlockGoalSheet(sheet.id, liveProfile)
+    const result = await unlockGoalSheet(sheet.id, liveProfile, reason)
     setUnlockingId(null)
     if (result.success) {
-      toast({ title: 'Goal sheet unlocked', description: `${sheet.employeeName}'s sheet was returned for rework.` })
+      toast({
+        title: 'Goal sheet unlocked',
+        description: `${sheet.employeeName}'s sheet is unlocked for rework.`,
+      })
+      setSelectedUnlockSheet(null)
+      setUnlockReason('')
       await loadDashboard()
     } else {
       toast({
@@ -91,6 +121,12 @@ export default function AdminDashboard() {
   }
 
   const recentAuditLogs: AuditLogRow[] = overview?.recentAuditLogs ?? []
+
+  function sheetStatusLabel(sheet: UnlockableSheet): string {
+    if (sheet.isLocked || sheet.status === 'locked') return 'Approved / Locked'
+    if (sheet.status === 'approved') return 'Approved / Locked'
+    return actionLabel(sheet.status)
+  }
 
   return (
     <DashboardLayout role="admin">
@@ -167,14 +203,14 @@ export default function AdminDashboard() {
                           <p className="text-xs text-muted-foreground">{sheet.department}</p>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">{sheet.status}</Badge>
+                          <Badge variant="outline">{sheetStatusLabel(sheet)}</Badge>
                         </TableCell>
                         <TableCell className="text-right">{sheet.totalWeightage}%</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleUnlock(sheet)}
+                            onClick={() => openUnlockDialog(sheet)}
                             disabled={unlockingId === sheet.id}
                           >
                             <LockOpen className="mr-2 h-4 w-4" />
@@ -235,6 +271,60 @@ export default function AdminDashboard() {
           </Card>
         </div>
       </div>
+
+      <Dialog
+        open={Boolean(selectedUnlockSheet)}
+        onOpenChange={(open) => {
+          if (!open && !unlockingId) {
+            setSelectedUnlockSheet(null)
+            setUnlockReason('')
+            setUnlockReasonError(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unlock goal sheet for rework?</DialogTitle>
+            <DialogDescription>
+              This will allow the employee to edit and resubmit. Manager approval will be required again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Textarea
+              placeholder="Reason for unlock"
+              value={unlockReason}
+              onChange={(event) => {
+                setUnlockReason(event.target.value)
+                if (unlockReasonError) setUnlockReasonError(null)
+              }}
+              rows={4}
+            />
+            {unlockReasonError && (
+              <p className="text-sm text-destructive">{unlockReasonError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedUnlockSheet(null)
+                setUnlockReason('')
+                setUnlockReasonError(null)
+              }}
+              disabled={Boolean(unlockingId)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUnlock}
+              disabled={Boolean(unlockingId) || !unlockReason.trim()}
+            >
+              <LockOpen className="mr-2 h-4 w-4" />
+              {unlockingId ? 'Unlocking...' : 'Unlock for Rework'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   )
 }

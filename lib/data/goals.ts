@@ -24,6 +24,7 @@ type DbGoalSheetStatus =
   | 'final_closed'
 
 export type GoalSheetGoalInput = {
+  id?: string
   title: string
   description: string
   thrustArea: string
@@ -31,6 +32,7 @@ export type GoalSheetGoalInput = {
   target: number
   targetDate?: string | null
   weightage: number
+  isShared?: boolean
 }
 
 type DbUomType =
@@ -77,6 +79,10 @@ export type DbGoalSheetRowWithRelations = {
   approved_at: string | null
   returned_at: string | null
   locked_at: string | null
+  is_locked?: boolean | null
+  unlocked_at?: string | null
+  unlocked_by?: string | null
+  unlock_reason?: string | null
   approved_by: string | null
   manager_comment: string | null
   created_at: string
@@ -241,8 +247,14 @@ export function mapGoalSheetRowToGoalSheet(
     status: mapSheetStatusFromDb(row.status),
     totalWeightage: Number(row.total_weightage),
     goalsCount: row.goals_count,
+    isLocked: row.is_locked ?? (row.status === 'locked' || row.status === 'approved'),
     submittedAt: row.submitted_at,
     approvedAt: row.approved_at,
+    returnedAt: row.returned_at,
+    lockedAt: row.locked_at,
+    unlockedAt: row.unlocked_at ?? null,
+    unlockedBy: row.unlocked_by ?? null,
+    unlockReason: row.unlock_reason ?? null,
     approvedBy: row.approved_by,
     managerComments: row.manager_comment,
     lastUpdated: row.updated_at,
@@ -283,7 +295,11 @@ export async function deleteGoalsForSheet(goalSheetId: string): Promise<string |
     return 'Supabase client unavailable'
   }
 
-  const { error } = await supabase.from('goals').delete().eq('goal_sheet_id', goalSheetId)
+  const { error } = await supabase
+    .from('goals')
+    .delete()
+    .eq('goal_sheet_id', goalSheetId)
+    .eq('is_shared', false)
 
   if (error) {
     console.error('[deleteGoalsForSheet] error:', error.message)
@@ -311,7 +327,7 @@ export async function insertGoalsForSheet(
   const approvalStatus = options?.approvalStatus ?? 'draft'
 
   const rows = []
-  for (const goal of goals) {
+  for (const goal of goals.filter((candidate) => !candidate.isShared)) {
     const thrustAreaId = await getThrustAreaIdByName(goal.thrustArea)
     rows.push({
       goal_sheet_id: goalSheetId,

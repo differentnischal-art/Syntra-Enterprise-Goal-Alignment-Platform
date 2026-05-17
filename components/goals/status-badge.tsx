@@ -27,13 +27,13 @@ export function StatusBadge({ status, type = 'goal' }: StatusBadgeProps) {
   if (type === 'sheet') {
     const sheetConfig = {
       'draft': { label: 'Draft', className: 'bg-muted text-muted-foreground border-muted shadow-sm' },
-      'submitted': { label: 'Submitted', className: 'bg-primary/10 text-primary border-primary/25 shadow-sm shadow-primary/10' },
-      'pending-approval': { label: 'Pending Approval', className: 'bg-warning/10 text-warning-foreground border-warning/25 shadow-sm shadow-warning/10' },
-      'approved': { label: 'Approved', className: 'bg-success/10 text-success border-success/25 shadow-sm shadow-success/10' },
-      'returned': { label: 'Returned', className: 'bg-destructive/10 text-destructive border-destructive/25 shadow-sm shadow-destructive/10' },
+      'submitted': { label: 'Submitted for Approval', className: 'bg-primary/10 text-primary border-primary/25 shadow-sm shadow-primary/10' },
+      'pending-approval': { label: 'Submitted for Approval', className: 'bg-warning/10 text-warning-foreground border-warning/25 shadow-sm shadow-warning/10' },
+      'approved': { label: 'Approved / Locked', className: 'bg-success/10 text-success border-success/25 shadow-sm shadow-success/10' },
+      'returned': { label: 'Returned for Rework', className: 'bg-destructive/10 text-destructive border-destructive/25 shadow-sm shadow-destructive/10' },
       'rejected': { label: 'Rejected', className: 'bg-destructive/10 text-destructive border-destructive/25 shadow-sm shadow-destructive/10' },
       'rework-required': { label: 'Rework Required', className: 'bg-destructive/10 text-destructive border-destructive/25 shadow-sm shadow-destructive/10' },
-      'locked': { label: 'Locked', className: 'bg-primary/10 text-primary border-primary/25 shadow-sm shadow-primary/10' },
+      'locked': { label: 'Approved / Locked', className: 'bg-primary/10 text-primary border-primary/25 shadow-sm shadow-primary/10' },
       'q1-updated': { label: 'Q1 Updated', className: 'bg-success/10 text-success border-success/25 shadow-sm shadow-success/10' },
       'q2-updated': { label: 'Q2 Updated', className: 'bg-success/10 text-success border-success/25 shadow-sm shadow-success/10' },
       'q3-updated': { label: 'Q3 Updated', className: 'bg-success/10 text-success border-success/25 shadow-sm shadow-success/10' },
