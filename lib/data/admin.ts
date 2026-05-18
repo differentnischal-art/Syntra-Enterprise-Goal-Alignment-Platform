@@ -85,11 +85,16 @@ type CycleWindowRow = {
   id: string
   cycle_id: string
   period: string
+  window_key: string | null
+  title: string | null
   quarter: 'q1' | 'q2' | 'q3' | 'q4' | null
   window_opens: string
   window_closes: string | null
   action: string
   is_open: boolean
+  status: 'open' | 'closed' | 'completed' | null
+  opened_at: string | null
+  closed_at: string | null
   created_at: string
 }
 
@@ -148,12 +153,15 @@ export type AdminEscalation = {
 export type AdminCycleWindow = {
   id: string
   cycleId: string
+  windowKey: string
   name: string
   type: string
   startDate: string
   endDate: string | null
-  status: 'active' | 'completed' | 'upcoming'
+  status: 'open' | 'closed' | 'completed'
   quarter: 'q1' | 'q2' | 'q3' | 'q4' | null
+  openedAt: string | null
+  closedAt: string | null
 }
 
 export type AdminCycle = {
@@ -179,6 +187,24 @@ function first<T>(relation: Relation<T>): T | null {
 function departmentName(profile: ProfileRow | undefined): string {
   return first(profile?.departments)?.name ?? '-'
 }
+
+function cycleWindowKey(window: Pick<CycleWindowRow, 'window_key' | 'quarter' | 'action'>): string {
+  if (window.window_key) return window.window_key
+  if (window.action === 'goal_creation') return 'goal_setting'
+  if (window.quarter === 'q1') return 'q1_checkin'
+  if (window.quarter === 'q2') return 'q2_checkin'
+  if (window.quarter === 'q3') return 'q3_checkin'
+  if (window.quarter === 'q4') return 'q4_annual'
+  return 'goal_setting'
+}
+
+const CYCLE_WINDOW_ORDER = new Map([
+  ['goal_setting', 0],
+  ['q1_checkin', 1],
+  ['q2_checkin', 2],
+  ['q3_checkin', 3],
+  ['q4_annual', 4],
+])
 
 function statusFromDb(status: string): GoalStatus {
   if (status === 'on_track') return 'on-track'
@@ -565,40 +591,77 @@ export async function getAdminCycle(): Promise<AdminCycle | null> {
     .maybeSingle()
 
   if (cycleError || !cycleData) {
-    if (cycleError) console.error('[getAdminCycle] cycle error:', cycleError.message)
+    if (cycleError) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[cycle management] failed:', cycleError)
+      }
+      throw new Error('Could not load cycle windows.')
+    }
     return null
   }
 
   const cycle = cycleData as CycleRow
   const { data: windowsData, error: windowsError } = await supabase
     .from('cycle_windows')
-    .select('id, cycle_id, period, quarter, window_opens, window_closes, action, is_open, created_at')
+    .select(
+      `
+      id,
+      cycle_id,
+      period,
+      window_key,
+      title,
+      quarter,
+      window_opens,
+      window_closes,
+      action,
+      is_open,
+      status,
+      opened_at,
+      closed_at,
+      created_at
+    `
+    )
     .eq('cycle_id', cycle.id)
     .order('window_opens', { ascending: true })
 
   if (windowsError) {
-    console.error('[getAdminCycle] windows error:', windowsError.message)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[cycle management] failed:', windowsError)
+    }
+    throw new Error('Could not load cycle windows.')
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  const windows: AdminCycleWindow[] = ((windowsData ?? []) as CycleWindowRow[]).map((window) => {
-    const status: AdminCycleWindow['status'] = window.is_open
-      ? 'active'
-      : window.window_closes && window.window_closes < today
-        ? 'completed'
-        : 'upcoming'
+  const windows: AdminCycleWindow[] = ((windowsData ?? []) as CycleWindowRow[])
+    .map((window) => {
+      const status: AdminCycleWindow['status'] = window.status
+        ? window.status
+        : window.is_open
+          ? 'open'
+          : window.window_closes && window.window_closes < today
+            ? 'completed'
+            : 'closed'
+      const windowKey = cycleWindowKey(window)
 
-    return {
-      id: window.id,
-      cycleId: window.cycle_id,
-      name: window.period,
-      type: window.action,
-      startDate: window.window_opens,
-      endDate: window.window_closes,
-      status,
-      quarter: window.quarter,
-    }
-  })
+      return {
+        id: window.id,
+        cycleId: window.cycle_id,
+        windowKey,
+        name: window.title ?? window.period,
+        type: window.action,
+        startDate: window.window_opens,
+        endDate: window.window_closes,
+        status,
+        quarter: window.quarter,
+        openedAt: window.opened_at,
+        closedAt: window.closed_at,
+      }
+    })
+    .sort(
+      (a, b) =>
+        (CYCLE_WINDOW_ORDER.get(a.windowKey) ?? 99) -
+        (CYCLE_WINDOW_ORDER.get(b.windowKey) ?? 99)
+    )
 
   return {
     id: cycle.id,
@@ -622,30 +685,119 @@ export async function updateCycleWindowStatus(params: {
   const supabase = createClient()
   if (!supabase) return { success: false, error: 'Supabase client unavailable.' }
 
-  const { data: before } = await supabase
+  const { data: before, error: beforeError } = await supabase
     .from('cycle_windows')
-    .select('period, is_open')
+    .select('id, cycle_id, period, title, is_open, status')
     .eq('id', params.windowId)
     .maybeSingle()
 
+  if (beforeError || !before) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[cycle management] failed:', beforeError)
+    }
+    return { success: false, error: 'Could not load cycle window.' }
+  }
+
+  const windowBefore = before as {
+    id: string
+    cycle_id: string
+    period?: string
+    title?: string | null
+    is_open?: boolean
+    status?: string | null
+  }
+  const now = new Date().toISOString()
+
+  if (params.isOpen) {
+    const { error: closeOthersError } = await supabase
+      .from('cycle_windows')
+      .update({
+        is_open: false,
+        status: 'completed',
+        closed_at: now,
+        closed_by: params.admin.id,
+      })
+      .eq('cycle_id', windowBefore.cycle_id)
+      .eq('status', 'open')
+      .neq('id', params.windowId)
+
+    if (closeOthersError) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[cycle management] failed:', closeOthersError)
+      }
+      return { success: false, error: closeOthersError.message }
+    }
+  }
+
   const { error } = await supabase
     .from('cycle_windows')
-    .update({ is_open: params.isOpen })
+    .update(
+      params.isOpen
+        ? {
+            is_open: true,
+            status: 'open',
+            opened_at: now,
+            opened_by: params.admin.id,
+          }
+        : {
+            is_open: false,
+            status: 'completed',
+            closed_at: now,
+            closed_by: params.admin.id,
+          }
+    )
     .eq('id', params.windowId)
 
   if (error) {
-    console.error('[updateCycleWindowStatus] error:', error.message)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[cycle management] failed:', error)
+    }
+    return { success: false, error: error.message }
+  }
+
+  const windowName = windowBefore.title ?? windowBefore.period ?? 'Cycle Window'
+  await createAuditLog({
+    actorId: params.admin.id,
+    actorRole: 'admin',
+    actionType: params.isOpen ? 'cycle_window_opened' : 'cycle_window_closed',
+    fieldChanged: windowName,
+    oldValue: windowBefore.status ?? String(windowBefore.is_open ?? false),
+    newValue: params.isOpen ? 'open' : 'completed',
+    description: `Admin ${params.isOpen ? 'opened' : 'closed'} ${windowName}.`,
+  })
+
+  return { success: true, error: null }
+}
+
+export async function createDefaultCycleWindows(params: {
+  cycleId: string
+  admin: User
+}): Promise<{ success: boolean; error: string | null }> {
+  if (!isSupabaseConfigured() || !isRealUuid(params.cycleId) || !isRealUuid(params.admin.id)) {
+    return { success: false, error: 'Live admin session is required.' }
+  }
+
+  const supabase = createClient()
+  if (!supabase) return { success: false, error: 'Supabase client unavailable.' }
+
+  const { error } = await supabase.rpc('create_default_fy26_cycle_windows', {
+    p_cycle_id: params.cycleId,
+  })
+
+  if (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[cycle management] failed:', error)
+    }
     return { success: false, error: error.message }
   }
 
   await createAuditLog({
     actorId: params.admin.id,
     actorRole: 'admin',
-    actionType: params.isOpen ? 'cycle_window_opened' : 'cycle_window_closed',
-    fieldChanged: (before as { period?: string } | null)?.period ?? 'Cycle Window',
-    oldValue: String((before as { is_open?: boolean } | null)?.is_open ?? false),
-    newValue: String(params.isOpen),
-    description: `Admin ${params.isOpen ? 'opened' : 'closed'} a cycle window.`,
+    actionType: 'cycle_windows_seeded',
+    fieldChanged: 'Cycle Windows',
+    newValue: 'default_fy26_windows',
+    description: 'Admin created default FY26 cycle windows.',
   })
 
   return { success: true, error: null }
