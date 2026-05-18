@@ -48,18 +48,9 @@ The platform is designed for three core personas: **Employee**, **Manager**, and
 
 The project follows a modern serverless architecture using **Next.js**, **Vercel**, **Supabase Auth**, **Supabase PostgreSQL**, **Supabase Storage**, and **Row Level Security**.
 
-Add the exported architecture diagram image/PDF here before final submission:
+![AlignOS Architecture Diagram](docs/architecture_diagram.png)
 
-```text
-Architecture Diagram: PASTE_ARCHITECTURE_DIAGRAM_LINK_OR_FILE_PATH_HERE
-```
-
-Recommended file path if committed to the repository:
-
-```text
-docs/architecture-diagram.png
-```
-
+---
 ---
 
 ## Problem Statement Alignment
