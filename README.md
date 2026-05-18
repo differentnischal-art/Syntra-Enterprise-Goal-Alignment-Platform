@@ -9,11 +9,9 @@ The platform is designed for three core personas: **Employee**, **Manager**, and
 ## Live Working URL
 
 
-**Live Demo:** `https://syntra-enterprise-goal-alignment-platform-ozvc7uyfg.vercel.app/`
+**Live Demo:** [click this live link](https://syntra-enterprise-goal-alignment-platform-ozvc7uyfg.vercel.app/)
 
-> Use the production URL only. Disable Vercel Deployment Protection before sharing with judges.
 
----
 
 ## Source Code
 
