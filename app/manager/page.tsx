@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
@@ -9,11 +10,11 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { StatusBadge } from '@/components/goals/status-badge'
-import { mockTeamMembers, mockTeamGoals, mockActivityLogs } from '@/lib/mock-data'
-import { useManagerPendingApprovals } from '@/hooks/use-manager-pending-approvals'
+import { getManagerLiveData, type ManagerLiveData } from '@/lib/data/manager'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
 import { 
   Users, 
-  Target, 
   CheckCircle2, 
   Clock,
   TrendingUp,
@@ -25,34 +26,60 @@ import {
 } from 'lucide-react'
 
 export default function ManagerDashboard() {
-  const {
-    dataSource,
-    pendingCount,
-    pendingSheets,
-    demoPendingMembers,
-  } = useManagerPendingApprovals()
+  const { liveProfile, error: profileError } = useCurrentProfile()
+  const [managerData, setManagerData] = useState<ManagerLiveData | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
-  const useSupabasePending = dataSource === 'supabase'
-  const totalTeamMembers = mockTeamMembers.length
-  const pendingApprovals = useSupabasePending
-    ? pendingCount
-    : demoPendingMembers.length
-  const teamAvgAchievement = Math.round(
-    mockTeamMembers.reduce((sum, m) => sum + m.averageAchievement, 0) / mockTeamMembers.length
-  )
-  const checkInCompliance = Math.round(
-    (mockTeamMembers.filter(m => m.checkIns.Q3).length / mockTeamMembers.length) * 100
-  )
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setManagerData(null)
+      setFetchError(null)
+      return
+    }
 
-  // Get goals by thrust area for distribution
-  const thrustAreaDistribution = mockTeamGoals.reduce((acc, goal) => {
-    acc[goal.thrustArea] = (acc[goal.thrustArea] || 0) + 1
-    return acc
-  }, {} as Record<string, number>)
+    if (!liveProfile) {
+      setManagerData(null)
+      setFetchError(profileError)
+      return
+    }
 
-  const topThrustAreas = Object.entries(thrustAreaDistribution)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
+    let cancelled = false
+    const managerId = liveProfile.id
+
+    async function load() {
+      try {
+        setFetchError(null)
+        const data = await getManagerLiveData(managerId)
+        if (!cancelled) {
+          setManagerData(data)
+        }
+      } catch (err) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[manager dashboard] live data failed:', err)
+        }
+        if (!cancelled) {
+          setFetchError(err instanceof Error ? err.message : 'Failed to load manager dashboard data.')
+          setManagerData(null)
+        }
+      }
+    }
+
+    load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [liveProfile, profileError])
+
+  const teamMembers = managerData?.teamMembers ?? []
+  const pendingSheets = managerData?.pendingSheets ?? []
+  const totalTeamMembers = managerData?.directReportsCount ?? 0
+  const pendingApprovals = managerData?.pendingApprovals ?? 0
+  const teamAvgAchievement = managerData?.teamAvgAchievement ?? 0
+  const checkInCompliance = managerData?.checkInCompliance ?? 0
+  const topThrustAreas = managerData?.topThrustAreas ?? []
+  const recentActivity = managerData?.recentActivity ?? []
+  const totalGoals = managerData?.goalsCount ?? 0
 
   return (
     <DashboardLayout role="manager">
@@ -62,6 +89,12 @@ export default function ManagerDashboard() {
       />
 
       <div className="space-y-6 p-4 sm:p-6">
+        {fetchError && (
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="p-4 text-sm text-destructive">{fetchError}</CardContent>
+          </Card>
+        )}
+
         {/* KPI Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card className="overflow-hidden bg-gradient-to-br from-primary/10 via-card to-card">
@@ -75,7 +108,7 @@ export default function ManagerDashboard() {
                   <Users className="h-5 w-5 text-primary" />
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-3">Engineering Team</p>
+              <p className="text-xs text-muted-foreground mt-3">Direct reports</p>
             </CardContent>
           </Card>
 
@@ -154,8 +187,7 @@ export default function ManagerDashboard() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border">
-                    {useSupabasePending
-                      ? pendingSheets.map((sheet) => (
+                    {pendingSheets.map((sheet) => (
                           <div
                             key={sheet.goalSheetId}
                             className="flex items-center justify-between px-6 py-4 transition-all hover:bg-primary/5"
@@ -180,32 +212,7 @@ export default function ManagerDashboard() {
                               <Link href="/manager/approvals">Review</Link>
                             </Button>
                           </div>
-                        ))
-                      : demoPendingMembers.map((member) => (
-                          <div
-                            key={member.id}
-                            className="flex items-center justify-between px-6 py-4 transition-all hover:bg-primary/5"
-                          >
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9 border border-border">
-                            <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                              {member.name.split(' ').map(n => n[0]).join('')}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <p className="text-sm font-medium">{member.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {member.goalsCount} goals | {member.totalWeightage}% weightage
-                            </p>
-                          </div>
-                        </div>
-                        <Button size="sm" asChild>
-                          <Link href="/manager/approvals">
-                            Review
-                          </Link>
-                        </Button>
-                      </div>
-                    ))}
+                        ))}
                   </div>
                 )}
               </CardContent>
@@ -220,7 +227,11 @@ export default function ManagerDashboard() {
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y divide-border">
-                {mockActivityLogs.slice(0, 5).map((activity) => (
+                {recentActivity.length === 0 ? (
+                  <div className="px-6 py-10 text-center">
+                    <p className="text-sm font-medium">No recent team activity yet.</p>
+                  </div>
+                ) : recentActivity.map((activity) => (
                   <div key={activity.id} className="flex items-start gap-3 px-6 py-3 transition-colors hover:bg-primary/5">
                     <div className={`
                       mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full
@@ -280,7 +291,7 @@ export default function ManagerDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {mockTeamMembers.map((member, index) => (
+                  {teamMembers.map((member, index) => (
                     <tr key={member.id} className={`border-b border-border transition-colors last:border-0 hover:bg-primary/5 ${index % 2 === 0 ? 'bg-card' : 'bg-muted/25'}`}>
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-3">
@@ -316,6 +327,13 @@ export default function ManagerDashboard() {
                       ))}
                     </tr>
                   ))}
+                  {teamMembers.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-10 text-center text-sm text-muted-foreground">
+                        No direct reports found.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -330,11 +348,13 @@ export default function ManagerDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {topThrustAreas.map(([area, count]) => (
+              {topThrustAreas.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No team goals found.</p>
+              ) : topThrustAreas.map(([area, count]) => (
                 <div key={area} className="flex items-center gap-4">
                   <div className="w-40 text-sm font-medium truncate">{area}</div>
                   <div className="flex-1">
-                    <Progress value={(count / mockTeamGoals.length) * 100} className="h-2" />
+                    <Progress value={totalGoals > 0 ? (count / totalGoals) * 100 : 0} className="h-2" />
                   </div>
                   <div className="w-12 text-right text-sm text-muted-foreground">{count} goals</div>
                 </div>

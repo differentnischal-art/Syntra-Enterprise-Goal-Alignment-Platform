@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { StatusBadge, SharedBadge } from '@/components/goals/status-badge'
+import { useToast } from '@/hooks/use-toast'
 import {
   Table,
   TableBody,
@@ -116,6 +117,29 @@ function sheetStatusForBadge(goalSheet: GoalSheet): GoalSheetStatus | 'unlocked-
   return goalSheet.status
 }
 
+function escapeCsv(value: unknown) {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`
+}
+
+function csvRow(values: unknown[]) {
+  return values.map(escapeCsv).join(',')
+}
+
+function sanitizeFilenamePart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function formatExportDate(value: string | null | undefined) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toISOString().slice(0, 10)
+}
+
 function StatusBanner({ goalSheet }: { goalSheet: GoalSheet }) {
   const isAdminUnlocked = Boolean(goalSheet.unlockedAt)
 
@@ -193,7 +217,9 @@ export default function MyGoalSheetPage() {
     dataSource,
     fetchError,
   } = useEmployeeGoalSheetData()
+  const { toast } = useToast()
   const [liveActivityLogs, setLiveActivityLogs] = useState<AuditLogRow[] | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   useEffect(() => {
     if (
@@ -239,6 +265,102 @@ export default function MyGoalSheetPage() {
         : dataSource === 'loading'
           ? 'Loading goal sheet...'
           : 'Demo goal sheet'
+
+  const handleExportGoalSheet = () => {
+    if (!goalSheet || dataSource !== 'supabase') {
+      toast({ title: 'No goal sheet available to export.' })
+      return
+    }
+
+    try {
+      setIsExporting(true)
+
+      const employeeName = goalSheet.employeeName || profile?.name || ''
+      const employeeEmail = profile?.email ?? ''
+      const cycleName = goalSheet.cycleName || activeCycle?.name || ''
+      const rows: string[] = [
+        csvRow(['Goal Sheet Summary']),
+        csvRow(['Field', 'Value']),
+        csvRow(['Employee name', employeeName]),
+        csvRow(['Employee email', employeeEmail]),
+        csvRow(['Manager name', goalSheet.managerName]),
+        csvRow(['Cycle name', cycleName]),
+        csvRow(['Goal sheet status', goalSheet.status]),
+        csvRow(['Total weightage', totalWeightage]),
+        csvRow(['Goal count', goalsCount]),
+        csvRow(['Approved date', formatExportDate(goalSheet.approvedAt)]),
+        csvRow(['Unlocked reason', goalSheet.unlockReason]),
+        '',
+        csvRow(['Goals']),
+        csvRow([
+          'Goal title',
+          'Description',
+          'Thrust area',
+          'Unit of measurement',
+          'Target',
+          'Weightage %',
+          'Progress %',
+          'Status',
+          'Shared goal',
+        ]),
+      ]
+
+      goals.forEach((goal) => {
+        rows.push(
+          csvRow([
+            goal.title,
+            goal.description,
+            goal.thrustArea,
+            uomLabels[goal.unitOfMeasurement] ?? goal.unitOfMeasurement,
+            goal.unitOfMeasurement === 'timeline'
+              ? formatExportDate(goal.targetDate)
+              : goal.target,
+            goal.weightage,
+            goal.progress ?? 0,
+            goal.status,
+            goal.isShared ? 'Yes' : 'No',
+          ])
+        )
+      })
+
+      if (activityLogs.length > 0) {
+        rows.push(
+          '',
+          csvRow(['Activity Timeline']),
+          csvRow(['Date', 'Action', 'Actor', 'Description'])
+        )
+        activityLogs.forEach((activity) => {
+          rows.push(
+            csvRow([
+              formatExportDate(activity.timestamp),
+              activity.type,
+              activity.actorName,
+              activity.description,
+            ])
+          )
+        })
+      }
+
+      const csvContent = rows.join('\r\n')
+      const filenameBase = sanitizeFilenamePart(employeeName || employeeEmail || 'employee')
+      const cycleBase = sanitizeFilenamePart(cycleName || 'goal-cycle')
+      const filename = `goal-sheet-${filenameBase}-${cycleBase}.csv`
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      toast({ title: 'Could not export goal sheet.' })
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[export goal sheet] failed:', error)
+      }
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   return (
     <DashboardLayout role="employee">
@@ -375,9 +497,20 @@ export default function MyGoalSheetPage() {
                       Submit Q4 Check-in
                     </Link>
                   </Button>
-                  <Button variant="outline" className="w-full justify-start">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full justify-start"
+                    onClick={handleExportGoalSheet}
+                    disabled={
+                      !goalSheet ||
+                      goals.length === 0 ||
+                      dataSource !== 'supabase' ||
+                      isExporting
+                    }
+                  >
                     <Download className="mr-2 h-4 w-4" />
-                    Export Goal Sheet
+                    {isExporting ? 'Exporting...' : 'Export Goal Sheet'}
                   </Button>
                 </CardContent>
               </Card>

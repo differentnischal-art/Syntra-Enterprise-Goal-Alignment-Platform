@@ -118,7 +118,7 @@ export default function AdminDashboard() {
     try {
       if (process.env.NODE_ENV === 'development') {
         console.log('[admin unlock] selectedGoalSheet:', selectedGoalSheet)
-        console.log('[admin unlock] selected goal sheet id:', selectedGoalSheet?.id)
+        console.log('[admin unlock] selectedGoalSheet.id:', selectedGoalSheet?.id)
       }
 
       await unlockGoalSheetForRework({

@@ -28,7 +28,9 @@ import { StatusBadge } from '@/components/goals/status-badge'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import {
   addManagerCheckInComment,
+  createCheckInEvidenceSignedUrl,
   getManagerTeamCheckIns,
+  type CheckInEvidenceAttachment,
   type CheckInQuarter,
   type ManagerCheckInComment,
   type ManagerCheckInCommentType,
@@ -37,7 +39,7 @@ import {
 import { mockCheckIns, mockGoals, mockTeamMembers } from '@/lib/mock-data'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
 import type { TeamMember } from '@/lib/types'
-import { Check, X, MessageSquare } from 'lucide-react'
+import { Check, Download, X, MessageSquare } from 'lucide-react'
 
 type QuarterLabel = 'Q1' | 'Q2' | 'Q3' | 'Q4'
 
@@ -51,6 +53,7 @@ type CheckInReviewMember = {
   averageScore: number | null
   quarterCompletionStatus: 'not_started' | 'partial' | 'completed'
   plannedVsActual: ManagerTeamCheckInRow['plannedVsActual']
+  evidenceAttachments: CheckInEvidenceAttachment[]
 }
 
 const quarterToDb: Record<QuarterLabel, CheckInQuarter> = {
@@ -116,6 +119,7 @@ function buildDemoReviewMembers(): CheckInReviewMember[] {
       averageScore: member.averageAchievement,
       quarterCompletionStatus: member.checkIns.Q4 ? 'completed' : 'not_started',
       plannedVsActual,
+      evidenceAttachments: [],
     }
   })
 }
@@ -131,6 +135,7 @@ function mapLiveRow(row: ManagerTeamCheckInRow): CheckInReviewMember {
     averageScore: row.averageScore,
     quarterCompletionStatus: row.quarterCompletionStatus,
     plannedVsActual: row.plannedVsActual,
+    evidenceAttachments: row.evidenceAttachments,
   }
 }
 
@@ -178,6 +183,7 @@ export default function ManagerCheckInsPage() {
   const [comment, setComment] = useState('')
   const [commentError, setCommentError] = useState<string | null>(null)
   const [commentMessage, setCommentMessage] = useState<string | null>(null)
+  const [evidenceError, setEvidenceError] = useState<string | null>(null)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -279,6 +285,7 @@ export default function ManagerCheckInsPage() {
     setComment('')
     setCommentError(null)
     setCommentMessage(null)
+    setEvidenceError(null)
     setIsSheetOpen(true)
   }
 
@@ -361,6 +368,18 @@ export default function ManagerCheckInsPage() {
 
     setComment('')
     setCommentMessage('Manager comment saved to Supabase.')
+  }
+
+  const handleDownloadEvidence = async (attachment: CheckInEvidenceAttachment) => {
+    setEvidenceError(null)
+    const result = await createCheckInEvidenceSignedUrl(attachment.storagePath)
+
+    if (result.error || !result.url) {
+      setEvidenceError('Could not download evidence file.')
+      return
+    }
+
+    window.open(result.url, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -484,6 +503,45 @@ export default function ManagerCheckInsPage() {
                     </span>
                   </p>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium">Achievement Evidence</h4>
+                {selectedMember.evidenceAttachments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No evidence file uploaded for this quarter.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {selectedMember.evidenceAttachments.map((attachment) => (
+                      <div
+                        key={attachment.id}
+                        className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div>
+                          <p className="text-sm font-medium">{attachment.fileName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Uploaded {new Date(attachment.uploadedAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDownloadEvidence(attachment)}
+                        >
+                          <Download className="mr-2 h-4 w-4" />
+                          Download Evidence
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {evidenceError && (
+                  <p className="text-sm text-destructive">{evidenceError}</p>
+                )}
               </div>
 
               <div className="space-y-2">

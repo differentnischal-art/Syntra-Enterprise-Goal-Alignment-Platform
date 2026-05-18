@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { SummaryCard } from '@/components/dashboard/summary-card'
@@ -14,11 +14,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { mockTeamMembers } from '@/lib/mock-data'
+import { getManagerLiveData, type ManagerLiveData } from '@/lib/data/manager'
+import { isSupabaseConfigured } from '@/lib/supabase/env'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
 import { TeamMember } from '@/lib/types'
 import { 
   TrendingUp, 
-  Users, 
   Target,
   Award,
   AlertCircle,
@@ -27,14 +28,57 @@ import {
 } from 'lucide-react'
 
 export default function ManagerPerformancePage() {
-  const [teamMembers] = useState<TeamMember[]>(mockTeamMembers)
+  const { liveProfile, error: profileError } = useCurrentProfile()
+  const [managerData, setManagerData] = useState<ManagerLiveData | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setManagerData(null)
+      setFetchError(null)
+      return
+    }
+
+    if (!liveProfile) {
+      setManagerData(null)
+      setFetchError(profileError)
+      return
+    }
+
+    let cancelled = false
+    const managerId = liveProfile.id
+
+    async function load() {
+      try {
+        setFetchError(null)
+        const data = await getManagerLiveData(managerId)
+        if (!cancelled) {
+          setManagerData(data)
+        }
+      } catch (err) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[manager performance] live data failed:', err)
+        }
+        if (!cancelled) {
+          setFetchError(err instanceof Error ? err.message : 'Failed to load team performance.')
+          setManagerData(null)
+        }
+      }
+    }
+
+    load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [liveProfile, profileError])
+
+  const teamMembers = managerData?.teamMembers ?? []
 
   // Calculate performance metrics
-  const avgAchievement = Math.round(
-    teamMembers.reduce((sum, m) => sum + m.averageAchievement, 0) / teamMembers.length
-  )
+  const avgAchievement = managerData?.teamAvgAchievement ?? 0
   const topPerformers = teamMembers.filter(m => m.averageAchievement >= 65).length
-  const needsAttention = teamMembers.filter(m => m.averageAchievement > 0 && m.averageAchievement < 50).length
+  const needsAttention = teamMembers.filter(m => m.averageAchievement < 50).length
   const notStarted = teamMembers.filter(m => m.averageAchievement === 0).length
 
   const getPerformanceBadge = (achievement: number) => {
@@ -63,6 +107,12 @@ export default function ManagerPerformancePage() {
       <DashboardHeader title="Team Performance" />
 
       <div className="p-6 space-y-6">
+        {fetchError && (
+          <Card className="border-destructive/30 bg-destructive/5">
+            <CardContent className="p-4 text-sm text-destructive">{fetchError}</CardContent>
+          </Card>
+        )}
+
         {/* Summary Cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <SummaryCard
@@ -139,8 +189,7 @@ export default function ManagerPerformancePage() {
                   <span className="font-medium">{'Needs Focus (<50%)'}</span>
                 </div>
                 <p className="text-3xl font-bold text-destructive">
-                  {teamMembers.filter(m => m.averageAchievement > 0 && m.averageAchievement < 50).length + 
-                   teamMembers.filter(m => m.averageAchievement === 0).length}
+                  {teamMembers.filter(m => m.averageAchievement < 50).length}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">team members</p>
               </div>
@@ -209,6 +258,13 @@ export default function ManagerPerformancePage() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {teamMembers.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-10 text-center text-sm text-muted-foreground">
+                      No progress recorded.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </CardContent>

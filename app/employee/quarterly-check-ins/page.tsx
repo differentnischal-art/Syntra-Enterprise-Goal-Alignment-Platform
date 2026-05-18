@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -22,8 +22,11 @@ import { StatusBadge } from '@/components/goals/status-badge'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import {
   calculateCheckInScore,
+  createCheckInEvidenceSignedUrl,
   getEmployeeQuarterlyCheckIns,
   submitEmployeeQuarterlyCheckIns,
+  validateCheckInEvidenceFile,
+  type CheckInEvidenceAttachment,
   type CheckInQuarter,
   type EmployeeQuarterlyCheckInRow,
 } from '@/lib/data/check-ins'
@@ -35,9 +38,12 @@ import type { GoalCycle, GoalStatus, UnitOfMeasurement } from '@/lib/types'
 import {
   CheckCircle2,
   Clock,
+  Download,
+  FileSpreadsheet,
   Send,
   MessageSquare,
   Info,
+  X,
 } from 'lucide-react'
 
 const uomLabels: Record<string, string> = {
@@ -112,8 +118,12 @@ export default function QuarterlyCheckInsPage() {
   const [liveRows, setLiveRows] = useState<EmployeeQuarterlyCheckInRow[] | null>(null)
   const [liveGoalSheetId, setLiveGoalSheetId] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
+  const [evidenceFile, setEvidenceFile] = useState<File | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [evidenceAttachments, setEvidenceAttachments] = useState<CheckInEvidenceAttachment[]>([])
 
   const dueDate = 'Nov 30, 2025'
   const isQ4Active = activeQuarter === 'Q4'
@@ -140,10 +150,13 @@ export default function QuarterlyCheckInsPage() {
   useEffect(() => {
     setSubmitError(null)
     setSubmitMessage(null)
+    setFileError(null)
+    setEvidenceFile(null)
 
     if (!canFetchLive || !liveProfile || !activeCycle) {
       setLiveRows(null)
       setLiveGoalSheetId(null)
+      setEvidenceAttachments([])
       setCheckInData(isSupabaseConfigured() ? {} : createMockEntries(activeQuarter))
       setIsLoading(false)
       return
@@ -166,10 +179,12 @@ export default function QuarterlyCheckInsPage() {
       if (result && result.rows.length > 0) {
         setLiveRows(result.rows)
         setLiveGoalSheetId(result.goalSheetId)
+        setEvidenceAttachments(result.evidenceAttachments)
         setCheckInData(createLiveEntries(result.rows))
       } else {
         setLiveRows(null)
         setLiveGoalSheetId(null)
+        setEvidenceAttachments([])
         setCheckInData(isSupabaseConfigured() ? {} : createMockEntries(activeQuarter))
       }
 
@@ -234,6 +249,10 @@ export default function QuarterlyCheckInsPage() {
     })
   }, [activeQuarter, liveRows])
 
+  const existingEvidence = evidenceAttachments[0] ?? null
+  const isSubmitted = displayRows.length > 0 && displayRows.every((row) => Boolean(row.submittedAt))
+  const evidenceLocked = Boolean(existingEvidence && isSubmitted)
+
   const updateCheckIn = (
     goalId: string,
     field: keyof CheckInEntry,
@@ -245,11 +264,78 @@ export default function QuarterlyCheckInsPage() {
     }))
   }
 
+  const getAchievementValidationError = () => {
+    for (const row of displayRows) {
+      const entry = checkInData[row.goalId]
+      const value = entry?.actualAchievement.trim() ?? ''
+
+      if (!value) {
+        return 'Enter actual achievement for all goals before submitting.'
+      }
+
+      const parsed = Number(value)
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return 'Actual achievement must be a valid non-negative number.'
+      }
+    }
+
+    return null
+  }
+
+  const handleEvidenceFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0] ?? null
+    const validationError = validateCheckInEvidenceFile(file)
+
+    if (validationError) {
+      setEvidenceFile(null)
+      setFileError(validationError)
+      event.currentTarget.value = ''
+      return
+    }
+
+    setEvidenceFile(file)
+    setFileError(null)
+  }
+
+  const handleRemoveEvidenceFile = () => {
+    setEvidenceFile(null)
+    setFileError(null)
+  }
+
+  const handleDownloadEvidence = async (attachment: CheckInEvidenceAttachment) => {
+    setSubmitError(null)
+    const result = await createCheckInEvidenceSignedUrl(attachment.storagePath)
+
+    if (result.error || !result.url) {
+      setSubmitError('Could not download evidence file.')
+      return
+    }
+
+    window.open(result.url, '_blank', 'noopener,noreferrer')
+  }
+
   const handleSubmit = async () => {
     setSubmitError(null)
     setSubmitMessage(null)
+    setFileError(null)
 
     if (!isQ4Active) {
+      return
+    }
+
+    const achievementError = getAchievementValidationError()
+    if (achievementError) {
+      setSubmitError(achievementError)
+      return
+    }
+
+    const evidenceError = validateCheckInEvidenceFile(evidenceFile)
+    if (evidenceError) {
+      setFileError(evidenceError)
+      setSubmitError(evidenceError)
+      return
+    }
+    if (!evidenceFile) {
       return
     }
 
@@ -262,10 +348,13 @@ export default function QuarterlyCheckInsPage() {
       return
     }
 
+    setIsUploading(true)
     const result = await submitEmployeeQuarterlyCheckIns({
       employeeId: liveProfile.id,
       goalSheetId: liveGoalSheetId,
+      cycleId: activeCycle.id,
       quarter: dbQuarter,
+      evidenceFile,
       entries: displayRows.map((row) => {
         const entry = checkInData[row.goalId]
         const actualAchievement =
@@ -282,6 +371,7 @@ export default function QuarterlyCheckInsPage() {
         }
       }),
     })
+    setIsUploading(false)
 
     if (result.error) {
       setSubmitError(result.error)
@@ -297,8 +387,10 @@ export default function QuarterlyCheckInsPage() {
     if (refreshed) {
       setLiveRows(refreshed.rows)
       setLiveGoalSheetId(refreshed.goalSheetId)
+      setEvidenceAttachments(refreshed.evidenceAttachments)
       setCheckInData(createLiveEntries(refreshed.rows))
     }
+    setEvidenceFile(null)
   }
 
   return (
@@ -323,9 +415,9 @@ export default function QuarterlyCheckInsPage() {
               Due Date: <span className="font-medium text-foreground">{dueDate}</span>
             </p>
           </div>
-          <Button disabled={!isQ4Active || isLoading} onClick={handleSubmit}>
+          <Button disabled={!isQ4Active || isLoading || isUploading || evidenceLocked} onClick={handleSubmit}>
             <Send className="mr-2 h-4 w-4" />
-            Submit Q4 Check-in
+            {isUploading ? 'Uploading Evidence...' : 'Submit Q4 Check-in'}
           </Button>
         </div>
 
@@ -343,6 +435,75 @@ export default function QuarterlyCheckInsPage() {
             <AlertDescription>{submitMessage}</AlertDescription>
           </Alert>
         )}
+
+        <Card className="border-border/60">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+              Upload Achievement Evidence
+            </CardTitle>
+            <CardDescription>
+              Attach a CSV or XLSX file supporting your achievement update. Required before submission.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {existingEvidence && (
+              <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium">{existingEvidence.fileName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Uploaded {new Date(existingEvidence.uploadedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDownloadEvidence(existingEvidence)}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Evidence
+                </Button>
+              </div>
+            )}
+
+            {!evidenceLocked && (
+              <div className="space-y-2">
+                <input
+                  key={evidenceFile?.name ?? 'no-evidence-file'}
+                  type="file"
+                  accept=".csv,.xlsx"
+                  onChange={handleEvidenceFileChange}
+                  disabled={isUploading}
+                  className="block w-full text-sm text-foreground file:mr-4 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
+                />
+                {evidenceFile && (
+                  <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm font-medium">{evidenceFile.name}</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleRemoveEvidenceFile}
+                      disabled={isUploading}
+                    >
+                      <X className="mr-2 h-4 w-4" />
+                      Remove
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {fileError && (
+              <p className="text-sm text-destructive">{fileError}</p>
+            )}
+          </CardContent>
+        </Card>
 
         <Tabs value={activeQuarter} onValueChange={(v) => setActiveQuarter(v as 'Q1' | 'Q2' | 'Q3' | 'Q4')}>
           <TabsList className="grid w-full grid-cols-4 max-w-md">

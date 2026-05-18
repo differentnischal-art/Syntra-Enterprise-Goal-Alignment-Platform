@@ -16,6 +16,16 @@ import type { Goal, GoalStatus, UnitOfMeasurement, User } from '@/lib/types'
 
 export type CheckInQuarter = 'q1' | 'q2' | 'q3' | 'q4'
 
+const CHECK_IN_EVIDENCE_BUCKET = 'check-in-evidence'
+const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024
+const ALLOWED_EVIDENCE_EXTENSIONS = new Set(['csv', 'xlsx'])
+const ALLOWED_EVIDENCE_MIME_TYPES = new Set([
+  'text/csv',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/octet-stream',
+  '',
+])
+
 export type ManagerCheckInCommentType =
   | 'coaching'
   | 'appreciation'
@@ -30,6 +40,21 @@ export type ManagerCheckInComment = {
   commentType: ManagerCheckInCommentType | null
   comment: string
   createdAt: string
+}
+
+export type CheckInEvidenceAttachment = {
+  id: string
+  checkInId: string | null
+  goalSheetId: string
+  employeeId: string
+  cycleId: string
+  quarter: CheckInQuarter
+  fileName: string
+  fileType: string
+  fileSize: number
+  storagePath: string
+  uploadedBy: string
+  uploadedAt: string
 }
 
 export type EmployeeQuarterlyCheckInRow = {
@@ -51,8 +76,10 @@ export type EmployeeQuarterlyCheckInRow = {
 
 export type EmployeeQuarterlyCheckInsResult = {
   goalSheetId: string
+  cycleId: string
   quarter: CheckInQuarter
   rows: EmployeeQuarterlyCheckInRow[]
+  evidenceAttachments: CheckInEvidenceAttachment[]
 }
 
 export type EmployeeCheckInSubmitEntry = {
@@ -67,8 +94,10 @@ export type EmployeeCheckInSubmitEntry = {
 export type SubmitEmployeeQuarterlyCheckInsParams = {
   employeeId: string
   goalSheetId: string
+  cycleId: string
   quarter: CheckInQuarter
   entries: EmployeeCheckInSubmitEntry[]
+  evidenceFile: File
 }
 
 export type ManagerTeamCheckInGoalRow = EmployeeQuarterlyCheckInRow
@@ -83,6 +112,7 @@ export type ManagerTeamCheckInRow = {
   quarter: CheckInQuarter
   checkIns: Record<'Q1' | 'Q2' | 'Q3' | 'Q4', boolean>
   plannedVsActual: ManagerTeamCheckInGoalRow[]
+  evidenceAttachments: CheckInEvidenceAttachment[]
 }
 
 type DbQuarterlyCheckInRow = {
@@ -145,6 +175,21 @@ type DbCheckInNotificationContext = {
   employee_id: string
   goal_id: string
   goal_sheet_id: string
+}
+
+type DbCheckInAttachmentRow = {
+  id: string
+  check_in_id: string | null
+  goal_sheet_id: string
+  employee_id: string
+  cycle_id: string
+  quarter: CheckInQuarter
+  file_name: string
+  file_type: string
+  file_size: number
+  storage_path: string
+  uploaded_by: string
+  uploaded_at: string
 }
 
 const GOAL_SHEET_CHECKIN_SELECT = `
@@ -270,6 +315,256 @@ export function calculateCheckInScore(params: {
   }
 
   return Math.max(0, Math.min(100, Math.round((actualAchievement / plannedTarget) * 100)))
+}
+
+function getEvidenceExtension(fileName: string) {
+  return fileName.split('.').pop()?.toLowerCase() ?? ''
+}
+
+function sanitizeEvidenceFileName(fileName: string) {
+  const trimmed = fileName.trim()
+  const extension = getEvidenceExtension(trimmed)
+  const baseName = trimmed.slice(0, Math.max(0, trimmed.length - extension.length - 1))
+  const safeBase = baseName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `${safeBase || 'achievement-evidence'}.${extension}`
+}
+
+function mapAttachmentRow(row: DbCheckInAttachmentRow): CheckInEvidenceAttachment {
+  return {
+    id: row.id,
+    checkInId: row.check_in_id,
+    goalSheetId: row.goal_sheet_id,
+    employeeId: row.employee_id,
+    cycleId: row.cycle_id,
+    quarter: row.quarter,
+    fileName: row.file_name,
+    fileType: row.file_type,
+    fileSize: Number(row.file_size),
+    storagePath: row.storage_path,
+    uploadedBy: row.uploaded_by,
+    uploadedAt: row.uploaded_at,
+  }
+}
+
+function storageObjectPath(storagePath: string) {
+  return storagePath.startsWith(`${CHECK_IN_EVIDENCE_BUCKET}/`)
+    ? storagePath.slice(CHECK_IN_EVIDENCE_BUCKET.length + 1)
+    : storagePath
+}
+
+export function validateCheckInEvidenceFile(file: File | null): string | null {
+  if (!file) {
+    return 'Please attach a CSV or XLSX evidence file before submitting.'
+  }
+
+  const extension = getEvidenceExtension(file.name)
+  if (!ALLOWED_EVIDENCE_EXTENSIONS.has(extension)) {
+    return 'Evidence file must be a CSV or XLSX file.'
+  }
+
+  if (!ALLOWED_EVIDENCE_MIME_TYPES.has(file.type)) {
+    return 'Evidence file must be a CSV or XLSX file.'
+  }
+
+  if (file.size > MAX_EVIDENCE_FILE_SIZE) {
+    return 'Evidence file must be 10 MB or smaller.'
+  }
+
+  return null
+}
+
+async function uploadCheckInEvidenceFile(params: {
+  employeeId: string
+  cycleId: string
+  quarter: CheckInQuarter
+  file: File
+}): Promise<{ storagePath: string; error: string | null }> {
+  const supabase = createClient()
+  if (!supabase) {
+    return { storagePath: '', error: 'Supabase client unavailable' }
+  }
+
+  const validationError = validateCheckInEvidenceFile(params.file)
+  if (validationError) {
+    return { storagePath: '', error: validationError }
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const fileName = sanitizeEvidenceFileName(params.file.name)
+  const objectPath = `${params.employeeId}/${params.cycleId}/${params.quarter}/${timestamp}-${fileName}`
+
+  const { error } = await supabase.storage
+    .from(CHECK_IN_EVIDENCE_BUCKET)
+    .upload(objectPath, params.file, {
+      contentType: params.file.type || undefined,
+      upsert: false,
+    })
+
+  if (error) {
+    console.error('[uploadCheckInEvidenceFile] error:', error.message)
+    return { storagePath: '', error: error.message }
+  }
+
+  return {
+    storagePath: `${CHECK_IN_EVIDENCE_BUCKET}/${objectPath}`,
+    error: null,
+  }
+}
+
+async function removeUploadedEvidence(storagePath: string) {
+  const supabase = createClient()
+  if (!supabase || !storagePath) {
+    return
+  }
+
+  const { error } = await supabase.storage
+    .from(CHECK_IN_EVIDENCE_BUCKET)
+    .remove([storageObjectPath(storagePath)])
+
+  if (error) {
+    console.error('[removeUploadedEvidence] error:', error.message)
+  }
+}
+
+async function fetchCheckInEvidenceAttachments(params: {
+  employeeId?: string
+  goalSheetIds?: string[]
+  goalSheetId?: string
+  cycleId?: string
+  quarter: CheckInQuarter
+}): Promise<CheckInEvidenceAttachment[]> {
+  const supabase = createClient()
+  if (!supabase) {
+    return []
+  }
+
+  let query = supabase
+    .from('check_in_attachments')
+    .select(
+      `
+      id,
+      check_in_id,
+      goal_sheet_id,
+      employee_id,
+      cycle_id,
+      quarter,
+      file_name,
+      file_type,
+      file_size,
+      storage_path,
+      uploaded_by,
+      uploaded_at
+    `
+    )
+    .eq('quarter', params.quarter)
+    .order('uploaded_at', { ascending: false })
+
+  if (params.employeeId) {
+    query = query.eq('employee_id', params.employeeId)
+  }
+  if (params.goalSheetId) {
+    query = query.eq('goal_sheet_id', params.goalSheetId)
+  }
+  if (params.cycleId) {
+    query = query.eq('cycle_id', params.cycleId)
+  }
+  if (params.goalSheetIds && params.goalSheetIds.length > 0) {
+    query = query.in('goal_sheet_id', params.goalSheetIds)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('[fetchCheckInEvidenceAttachments] error:', error.message)
+    return []
+  }
+
+  return ((data ?? []) as DbCheckInAttachmentRow[]).map(mapAttachmentRow)
+}
+
+async function insertCheckInEvidenceAttachment(params: {
+  checkInId: string | null
+  goalSheetId: string
+  employeeId: string
+  cycleId: string
+  quarter: CheckInQuarter
+  file: File
+  storagePath: string
+  uploadedBy: string
+}): Promise<{ attachment: CheckInEvidenceAttachment | null; error: string | null }> {
+  const supabase = createClient()
+  if (!supabase) {
+    return { attachment: null, error: 'Supabase client unavailable' }
+  }
+
+  const { data, error } = await supabase
+    .from('check_in_attachments')
+    .insert({
+      check_in_id: params.checkInId,
+      goal_sheet_id: params.goalSheetId,
+      employee_id: params.employeeId,
+      cycle_id: params.cycleId,
+      quarter: params.quarter,
+      file_name: params.file.name,
+      file_type: params.file.type || getEvidenceExtension(params.file.name),
+      file_size: params.file.size,
+      storage_path: params.storagePath,
+      uploaded_by: params.uploadedBy,
+    })
+    .select(
+      `
+      id,
+      check_in_id,
+      goal_sheet_id,
+      employee_id,
+      cycle_id,
+      quarter,
+      file_name,
+      file_type,
+      file_size,
+      storage_path,
+      uploaded_by,
+      uploaded_at
+    `
+    )
+    .single()
+
+  if (error) {
+    console.error('[insertCheckInEvidenceAttachment] error:', error.message)
+    return { attachment: null, error: error.message }
+  }
+
+  return {
+    attachment: mapAttachmentRow(data as DbCheckInAttachmentRow),
+    error: null,
+  }
+}
+
+export async function createCheckInEvidenceSignedUrl(
+  storagePath: string
+): Promise<{ url: string | null; error: string | null }> {
+  if (!isSupabaseConfigured()) {
+    return { url: null, error: null }
+  }
+
+  const supabase = createClient()
+  if (!supabase) {
+    return { url: null, error: 'Supabase client unavailable' }
+  }
+
+  const { data, error } = await supabase.storage
+    .from(CHECK_IN_EVIDENCE_BUCKET)
+    .createSignedUrl(storageObjectPath(storagePath), 60)
+
+  if (error) {
+    console.error('[createCheckInEvidenceSignedUrl] error:', error.message)
+    return { url: null, error: error.message }
+  }
+
+  return { url: data.signedUrl, error: null }
 }
 
 function profileRelationToUser(
@@ -476,10 +771,18 @@ export async function getEmployeeQuarterlyCheckIns(
 
     const checkIns = (checkInData ?? []) as DbQuarterlyCheckInRow[]
     const comments = await fetchCommentsForCheckIns(checkIns.map((row) => row.id))
+    const evidenceAttachments = await fetchCheckInEvidenceAttachments({
+      employeeId,
+      goalSheetId: sheet.id,
+      cycleId,
+      quarter,
+    })
 
     return {
       goalSheetId: sheet.id,
+      cycleId: sheet.cycle_id,
       quarter,
+      evidenceAttachments,
       rows: mergeGoalsWithCheckIns({
         goalSheetId: sheet.id,
         goals,
@@ -503,6 +806,7 @@ export async function submitEmployeeQuarterlyCheckIns(
   if (
     !isRealUuid(params.employeeId) ||
     !isRealUuid(params.goalSheetId) ||
+    !isRealUuid(params.cycleId) ||
     params.entries.some((entry) => !isRealUuid(entry.goalId))
   ) {
     return { rows: null, error: 'Invalid check-in payload' }
@@ -531,7 +835,21 @@ export async function submitEmployeeQuarterlyCheckIns(
     submitted_at: now,
   }))
 
+  let uploadedStoragePath = ''
+
   try {
+    const uploadResult = await uploadCheckInEvidenceFile({
+      employeeId: params.employeeId,
+      cycleId: params.cycleId,
+      quarter: params.quarter,
+      file: params.evidenceFile,
+    })
+
+    if (uploadResult.error) {
+      return { rows: null, error: uploadResult.error }
+    }
+    uploadedStoragePath = uploadResult.storagePath
+
     const { data, error } = await supabase
       .from('quarterly_checkins')
       .upsert(rows, { onConflict: 'goal_id,quarter' })
@@ -555,7 +873,25 @@ export async function submitEmployeeQuarterlyCheckIns(
 
     if (error) {
       console.error('[submitEmployeeQuarterlyCheckIns] error:', error.message)
+      await removeUploadedEvidence(uploadResult.storagePath)
       return { rows: null, error: error.message }
+    }
+
+    const savedRows = (data ?? []) as DbQuarterlyCheckInRow[]
+    const attachmentResult = await insertCheckInEvidenceAttachment({
+      checkInId: savedRows[0]?.id ?? null,
+      goalSheetId: params.goalSheetId,
+      employeeId: params.employeeId,
+      cycleId: params.cycleId,
+      quarter: params.quarter,
+      file: params.evidenceFile,
+      storagePath: uploadResult.storagePath,
+      uploadedBy: params.employeeId,
+    })
+
+    if (attachmentResult.error) {
+      await removeUploadedEvidence(uploadResult.storagePath)
+      return { rows: null, error: attachmentResult.error }
     }
 
     try {
@@ -566,8 +902,8 @@ export async function submitEmployeeQuarterlyCheckIns(
         goalSheetId: params.goalSheetId,
         actionType: 'checkin_submitted',
         fieldChanged: `${params.quarter.toUpperCase()} Check-in`,
-        newValue: 'submitted',
-        description: 'Employee submitted quarterly check-in updates',
+        newValue: params.evidenceFile.name,
+        description: `Employee submitted ${params.quarter.toUpperCase()} check-in with evidence file`,
       })
 
       const { data: sheetContext } = await supabase
@@ -583,7 +919,7 @@ export async function submitEmployeeQuarterlyCheckIns(
           userId: context.manager_id,
           type: 'checkin_submitted',
           title: 'Quarterly Check-in Submitted',
-          message: 'Employee submitted quarterly check-in updates',
+          message: 'Employee submitted quarterly check-in updates with evidence',
           link: '/manager/check-ins',
         })
       }
@@ -591,8 +927,9 @@ export async function submitEmployeeQuarterlyCheckIns(
       console.error('[submitEmployeeQuarterlyCheckIns] audit/notification error:', err)
     }
 
-    return { rows: (data ?? []) as DbQuarterlyCheckInRow[], error: null }
+    return { rows: savedRows, error: null }
   } catch (err) {
+    await removeUploadedEvidence(uploadedStoragePath)
     return {
       rows: null,
       error: err instanceof Error ? err.message : 'Failed to submit check-ins',
@@ -666,6 +1003,16 @@ export async function getManagerTeamCheckIns(
     const checkIns = (checkInData ?? []) as DbQuarterlyCheckInRow[]
     const comments = await fetchCommentsForCheckIns(checkIns.map((row) => row.id))
     const quarterKey = QUARTER_KEYS[quarter]
+    const evidenceAttachments = await fetchCheckInEvidenceAttachments({
+      goalSheetIds: sheets.map((sheet) => sheet.id),
+      quarter,
+    })
+    const evidenceBySheet = new Map<string, CheckInEvidenceAttachment[]>()
+    evidenceAttachments.forEach((attachment) => {
+      const existing = evidenceBySheet.get(attachment.goalSheetId) ?? []
+      existing.push(attachment)
+      evidenceBySheet.set(attachment.goalSheetId, existing)
+    })
 
     return sheets
       .map((sheet) => {
@@ -710,6 +1057,7 @@ export async function getManagerTeamCheckIns(
           quarter,
           checkIns: checkInsByQuarter,
           plannedVsActual: rows,
+          evidenceAttachments: evidenceBySheet.get(sheet.id) ?? [],
         }
       })
       .filter((row): row is ManagerTeamCheckInRow => row !== null)

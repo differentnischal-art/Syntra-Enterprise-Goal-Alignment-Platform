@@ -733,10 +733,11 @@ export async function unlockGoalSheetForRework({
     updated_at: now,
   }
 
-  const { error: updateSheetError } = await supabase
+  const { data: updatedRows, error: updateSheetError } = await supabase
     .from('goal_sheets')
     .update(unlockPayload)
     .eq('id', cleanGoalSheetId)
+    .select('id,status,is_locked,approved_at,locked_at,unlocked_at,unlock_reason')
 
   if (updateSheetError) {
     if (process.env.NODE_ENV === 'development') {
@@ -745,30 +746,33 @@ export async function unlockGoalSheetForRework({
     throw updateSheetError
   }
 
-  const { data: verifyRow, error: verifyError } = await supabase
-    .from('goal_sheets')
-    .select('id,status,is_locked,approved_at,locked_at,unlocked_at,unlock_reason')
-    .eq('id', cleanGoalSheetId)
-    .maybeSingle()
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[admin unlock] updatedRows:', updatedRows)
+  }
 
-  if (verifyError) {
+  if (!updatedRows || updatedRows.length !== 1) {
+    throw new Error('Unlock failed: goal sheet update affected no rows')
+  }
+
+  const verifyRow = updatedRows[0]
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[admin unlock] verifyRow after update:', verifyRow)
+    console.log('[admin unlock] goalSheetId used:', cleanGoalSheetId)
+    console.log('[admin unlock] unlockPayload used:', unlockPayload)
+  }
+
+  const didUnlock =
+    verifyRow.status === 'draft' &&
+    verifyRow.is_locked === false &&
+    verifyRow.approved_at === null &&
+    verifyRow.locked_at === null &&
+    Boolean(verifyRow.unlocked_at)
+
+  if (!didUnlock) {
     if (process.env.NODE_ENV === 'development') {
-      console.error('[admin unlock] verify failed:', verifyError)
+      console.error('[admin unlock] row did not unlock:', verifyRow)
     }
-    throw verifyError
-  }
-
-  if (!verifyRow) {
-    throw new Error('Unlock failed: goal sheet row not found after update')
-  }
-
-  if (
-    verifyRow.status !== 'draft' ||
-    verifyRow.is_locked !== false ||
-    verifyRow.approved_at !== null ||
-    verifyRow.locked_at !== null ||
-    !verifyRow.unlocked_at
-  ) {
     throw new Error('Unlock failed: goal sheet state did not change')
   }
 
