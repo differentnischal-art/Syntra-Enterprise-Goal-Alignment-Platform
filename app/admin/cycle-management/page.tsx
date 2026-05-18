@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast'
 import { useCurrentProfile } from '@/hooks/use-current-profile'
 import {
-  createDefaultCycleWindows,
   getAdminCycle,
   updateCycleWindowStatus,
   type AdminCycle,
@@ -41,13 +40,10 @@ function windowIcon(window: AdminCycleWindow) {
 }
 
 function statusBadge(status: AdminCycleWindow['status']) {
-  if (status === 'open') {
+  if (status === 'Open') {
     return <Badge className="border-success/20 bg-success/10 text-success">Open</Badge>
   }
-  if (status === 'completed') {
-    return <Badge variant="secondary" className="bg-muted text-muted-foreground">Completed</Badge>
-  }
-  return <Badge variant="outline" className="text-muted-foreground">Closed</Badge>
+  return <Badge variant="secondary" className="bg-muted text-muted-foreground">Completed</Badge>
 }
 
 export default function CycleManagementPage() {
@@ -68,7 +64,10 @@ export default function CycleManagementPage() {
       setCycle(null)
       setLoadError('Could not load cycle windows.')
       if (process.env.NODE_ENV === 'development') {
-        console.error('[cycle management] failed:', error)
+        console.error('[cycle management] failed:', {
+          message: error instanceof Error ? error.message : undefined,
+          raw: error,
+        })
       }
     } finally {
       setIsLoading(false)
@@ -79,7 +78,7 @@ export default function CycleManagementPage() {
     loadCycle()
   }, [])
 
-  const activeWindow = cycle?.windows.find((window) => window.status === 'open')
+  const activeWindow = cycle?.windows.find((window) => window.status === 'Open')
   const daysRemaining = cycle
     ? Math.max(
         0,
@@ -106,30 +105,6 @@ export default function CycleManagementPage() {
       toast({
         title: 'Cycle update failed',
         description: result.error ?? 'Could not update cycle window.',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleCreateDefaultWindows = async () => {
-    if (!liveProfile || !cycle) return
-    setUpdatingWindowId('default-windows')
-    const result = await createDefaultCycleWindows({
-      cycleId: cycle.id,
-      admin: liveProfile,
-    })
-    setUpdatingWindowId(null)
-
-    if (result.success) {
-      toast({
-        title: 'Cycle windows created',
-        description: 'Default FY26 windows were saved to Supabase.',
-      })
-      await loadCycle()
-    } else {
-      toast({
-        title: 'Cycle update failed',
-        description: result.error ?? 'Could not create cycle windows.',
         variant: 'destructive',
       })
     }
@@ -215,17 +190,6 @@ export default function CycleManagementPage() {
                       <p className="text-sm text-muted-foreground">
                         No cycle windows configured yet.
                       </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-4"
-                        onClick={handleCreateDefaultWindows}
-                        disabled={updatingWindowId === 'default-windows'}
-                      >
-                        <CalendarCheck className="mr-1 h-4 w-4" />
-                        Create Default FY26 Windows
-                      </Button>
                     </div>
                   ) : cycle.windows.map((window, index) => {
                     const Icon = windowIcon(window)
@@ -233,7 +197,7 @@ export default function CycleManagementPage() {
                       <div
                         key={window.id}
                         className={`relative rounded-lg border p-4 ${
-                          window.status === 'open'
+                          window.status === 'Open'
                             ? 'border-success/30 bg-success/5'
                             : 'border-border bg-card'
                         }`}
@@ -263,7 +227,7 @@ export default function CycleManagementPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {window.status !== 'open' ? (
+                            {window.status !== 'Open' ? (
                               <Button
                                 type="button"
                                 variant="outline"
