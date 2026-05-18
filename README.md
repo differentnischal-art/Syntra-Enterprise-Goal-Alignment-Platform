@@ -409,4 +409,4 @@ Built for **AtomQuest Hackathon 1.0**.
 
 **Project Name:** AlignOS — Enterprise Goal Setting & Tracking Portal  
 **Repository:** https://github.com/differentnischal-art/Syntra-Enterprise-Goal-Alignment-Platform  
-**Live Demo:** `PASTE_YOUR_VERCEL_PRODUCTION_URL_HERE`
+**Live Demo:** https://syntra-enterprise-goal-alignment-platform-ozvc7uyfg.vercel.app/
