@@ -76,16 +76,20 @@ export function Header({ user, title, subtitle, showRoleSwitcher = true }: Heade
     .toUpperCase()
 
   const roleLabel =
-    user.role === 'admin' ? 'Admin / HR' : user.role === 'manager' ? 'Manager' : 'Employee'
+    user.role === 'admin' || user.role === 'hr'
+      ? 'Admin / HR'
+      : user.role === 'manager'
+        ? 'Manager'
+        : 'Employee'
 
-  const roleColor = user.role === 'admin' 
+  const roleColor = user.role === 'admin' || user.role === 'hr'
     ? 'border-primary/30 bg-primary/5 text-primary'
     : user.role === 'manager'
       ? 'border-warning/30 bg-warning/10 text-warning-foreground'
       : 'border-success/30 bg-success/10 text-success'
 
   const notificationFooterHref =
-    user.role === 'admin'
+    user.role === 'admin' || user.role === 'hr'
       ? '/admin/escalations'
       : user.role === 'manager'
         ? '/manager/check-ins'

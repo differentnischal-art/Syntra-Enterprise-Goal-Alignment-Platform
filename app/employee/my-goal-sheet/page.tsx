@@ -109,27 +109,22 @@ function mapAuditActivity(row: AuditLogRow): DisplayActivity {
   }
 }
 
-function sheetStatusForBadge(status: GoalSheetStatus): GoalSheetStatus {
-  if (status === 'submitted') return 'pending-approval'
-  return status
+function sheetStatusForBadge(goalSheet: GoalSheet): GoalSheetStatus | 'unlocked-for-rework' {
+  if (goalSheet.isLocked) return 'locked'
+  if (goalSheet.unlockedAt) return 'unlocked-for-rework'
+  if (goalSheet.status === 'submitted') return 'pending-approval'
+  return goalSheet.status
 }
 
 function StatusBanner({ goalSheet }: { goalSheet: GoalSheet }) {
-  const isAdminUnlocked = Boolean(
-    !goalSheet.isLocked &&
-      goalSheet.unlockedAt &&
-      (goalSheet.status === 'returned' || goalSheet.status === 'rework-required')
-  )
+  const isAdminUnlocked = Boolean(goalSheet.unlockedAt)
 
   if (isAdminUnlocked) {
     return (
       <Alert className="border-warning/30 bg-warning/5">
         <AlertCircle className="h-4 w-4 text-warning-foreground" />
         <AlertDescription className="text-warning-foreground">
-          <span className="font-semibold">
-            Admin unlocked this goal sheet for rework.
-          </span>{' '}
-          You can edit and resubmit it for manager approval.
+          Admin unlocked this goal sheet for rework. Edit and resubmit for manager approval.
           {goalSheet.unlockReason && (
             <span className="mt-1 block">Reason: {goalSheet.unlockReason}</span>
           )}
@@ -232,11 +227,8 @@ export default function MyGoalSheetPage() {
   const canEditGoalSheet =
     Boolean(
       goalSheet &&
-        !goalSheet.isLocked &&
-        (goalSheet.status === 'draft' ||
-          goalSheet.status === 'returned' ||
-          goalSheet.status === 'rejected' ||
-          goalSheet.status === 'rework-required')
+        goalSheet.status === 'draft' &&
+        goalSheet.isLocked === false
     )
 
   const sourceBadgeLabel =
@@ -300,7 +292,7 @@ export default function MyGoalSheetPage() {
                     </div>
                     {goalSheet && (
                       <StatusBadge
-                        status={sheetStatusForBadge(goalSheet.status)}
+                        status={sheetStatusForBadge(goalSheet)}
                         type="sheet"
                       />
                     )}

@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { DashboardLayout } from '@/components/layout/dashboard-layout'
 import { DashboardHeader } from '@/components/layout/dashboard-header'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -17,32 +17,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useToast } from '@/hooks/use-toast'
+import { useCurrentProfile } from '@/hooks/use-current-profile'
 import { mockGoalCycle } from '@/lib/mock-data'
 import { getActiveGoalCycle } from '@/lib/data/goal-cycles'
 import {
   getCurrentEmployeeGoalSheetWithGoals,
-  isEditableGoalSheetStatus,
+  getOrCreateCurrentGoalSheet,
   saveGoalSheetDraft,
   submitGoalSheet,
+  type GoalSheetRecord,
 } from '@/lib/data/goal-sheets'
 import type { GoalSheetGoalInput } from '@/lib/data/goals'
 import { isRealUuid } from '@/lib/data/goals'
 import { getThrustAreaNames } from '@/lib/data/reference-data'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
-import { useCurrentProfile } from '@/hooks/use-current-profile'
-import type { GoalCycle, GoalSheetStatus, UnitOfMeasurement } from '@/lib/types'
-import { 
-  Plus, 
-  Trash2, 
-  Save, 
-  Send, 
-  CheckCircle2, 
+import type { Goal, GoalCycle, UnitOfMeasurement } from '@/lib/types'
+import {
+  Plus,
+  Trash2,
+  Save,
+  Send,
+  CheckCircle2,
   AlertCircle,
   Info,
   ChevronRight,
 } from 'lucide-react'
 
-interface DraftGoal {
+type DraftGoal = {
   id: string
   title: string
   description: string
@@ -74,7 +76,7 @@ const steps = [
   { id: 4, name: 'Manager Review', description: 'Await approval' },
 ]
 
-const uomOptions = [
+const uomOptions: Array<{ value: UnitOfMeasurement; label: string }> = [
   { value: 'numeric-higher-better', label: 'Numeric - Higher is Better' },
   { value: 'numeric-lower-better', label: 'Numeric - Lower is Better' },
   { value: 'percentage-higher-better', label: 'Percentage - Higher is Better' },
@@ -83,22 +85,10 @@ const uomOptions = [
   { value: 'zero-based', label: 'Zero Based' },
 ]
 
-function toGoalInputs(goals: DraftGoal[]): GoalSheetGoalInput[] {
-  return goals
-    .filter((g) => g.title.trim())
-    .map((g) => ({
-      title: g.title.trim(),
-      description: g.description,
-      thrustArea: g.thrustArea,
-      unitOfMeasurement: g.unitOfMeasurement,
-      target:
-        g.unitOfMeasurement === 'timeline' || g.unitOfMeasurement === 'zero-based'
-          ? 0
-          : parseFloat(g.target) || 0,
-      targetDate: g.unitOfMeasurement === 'timeline' ? g.targetDate : null,
-      weightage: parseInt(g.weightage, 10) || 0,
-      isShared: g.isShared ?? false,
-    }))
+function normalizeSheetStatus(status: string | null | undefined): string {
+  if (status === 'pending_approval') return 'pending-approval'
+  if (status === 'final_closed') return 'final-closed'
+  return status ?? 'draft'
 }
 
 function isPercentageUom(uom: UnitOfMeasurement) {
@@ -107,6 +97,47 @@ function isPercentageUom(uom: UnitOfMeasurement) {
     uom === 'percentage-higher-better' ||
     uom === 'percentage-lower-better'
   )
+}
+
+function draftGoalsFromGoals(goals: Goal[]): DraftGoal[] {
+  if (goals.length === 0) {
+    return [emptyGoal('draft-1')]
+  }
+
+  return goals.map((goal) => ({
+    id: goal.id,
+    title: goal.title,
+    description: goal.description,
+    thrustArea: goal.thrustArea === 'â€”' ? '' : goal.thrustArea,
+    unitOfMeasurement: goal.unitOfMeasurement,
+    target:
+      goal.unitOfMeasurement === 'timeline'
+        ? ''
+        : goal.unitOfMeasurement === 'zero-based'
+          ? '0'
+          : goal.target.toString(),
+    targetDate: goal.targetDate ?? '',
+    weightage: goal.weightage.toString(),
+    isShared: goal.isShared ?? false,
+  }))
+}
+
+function toGoalInputs(goals: DraftGoal[]): GoalSheetGoalInput[] {
+  return goals
+    .filter((goal) => goal.title.trim())
+    .map((goal) => ({
+      title: goal.title.trim(),
+      description: goal.description,
+      thrustArea: goal.thrustArea,
+      unitOfMeasurement: goal.unitOfMeasurement,
+      target:
+        goal.unitOfMeasurement === 'timeline' || goal.unitOfMeasurement === 'zero-based'
+          ? 0
+          : parseFloat(goal.target) || 0,
+      targetDate: goal.unitOfMeasurement === 'timeline' ? goal.targetDate : null,
+      weightage: parseInt(goal.weightage, 10) || 0,
+      isShared: goal.isShared ?? false,
+    }))
 }
 
 function hasValidTarget(goal: DraftGoal, cycle: GoalCycle | null) {
@@ -136,31 +167,24 @@ function hasValidTarget(goal: DraftGoal, cycle: GoalCycle | null) {
   return !isPercentageUom(goal.unitOfMeasurement) || target <= 100
 }
 
-function normalizeGoalSheetStatus(status: string): GoalSheetStatus {
-  if (status === 'pending_approval') return 'pending-approval'
-  if (status === 'rework_required') return 'rework-required'
-  if (status === 'final_closed') return 'final-closed'
-  return status as GoalSheetStatus
-}
-
 export default function CreateGoalSheetPage() {
   const { liveProfile, error: profileError } = useCurrentProfile()
+  const { toast } = useToast()
   const [activeCycle, setActiveCycle] = useState<GoalCycle | null>(
     isSupabaseConfigured() ? null : mockGoalCycle
   )
   const [thrustAreaOptions, setThrustAreaOptions] = useState<string[]>([])
-  const [currentStep, setCurrentStep] = useState(1)
   const [goals, setGoals] = useState<DraftGoal[]>([emptyGoal('draft-1')])
-  const [isSubmitted, setIsSubmitted] = useState(false)
   const [nextDraftId, setNextDraftId] = useState(2)
+  const [goalSheetId, setGoalSheetId] = useState<string | null>(null)
+  const [goalSheetStatus, setGoalSheetStatus] = useState<string>('draft')
+  const [goalSheetIsLocked, setGoalSheetIsLocked] = useState(false)
+  const [unlockedAt, setUnlockedAt] = useState<string | null>(null)
+  const [unlockReason, setUnlockReason] = useState<string | null>(null)
+  const [managerFeedback, setManagerFeedback] = useState<string | null>(null)
+  const [isLoadingSheet, setIsLoadingSheet] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isLoadingSheet, setIsLoadingSheet] = useState(false)
-  const [goalSheetStatus, setGoalSheetStatus] = useState<GoalSheetStatus>('draft')
-  const [goalSheetIsLocked, setGoalSheetIsLocked] = useState(false)
-  const [unlockReason, setUnlockReason] = useState<string | null>(null)
-  const [unlockedAt, setUnlockedAt] = useState<string | null>(null)
-  const [managerFeedback, setManagerFeedback] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -171,87 +195,148 @@ export default function CreateGoalSheetPage() {
     isSupabaseConfigured() &&
       liveProfile &&
       employeeId &&
-      managerId &&
       activeCycle &&
-      isRealUuid(activeCycle.id)
+      isRealUuid(activeCycle.id) &&
+      isRealUuid(liveProfile.id)
   )
+
+  const isAdminUnlockedForRework = Boolean(unlockedAt)
+  const isSubmittedOrApproved = [
+    'submitted',
+    'pending_approval',
+    'pending-approval',
+    'approved',
+    'locked',
+  ].includes(goalSheetStatus)
+  const canEdit = goalSheetStatus === 'draft' && goalSheetIsLocked === false
+  const isReadOnly = !canEdit
+  const currentStep = canEdit ? 1 : isSubmittedOrApproved ? 4 : 1
 
   useEffect(() => {
     let cancelled = false
-    getActiveGoalCycle().then((cycle) => {
-      if (!cancelled) {
-        setActiveCycle(cycle)
-      }
-    })
+    getActiveGoalCycle()
+      .then((cycle) => {
+        if (!cancelled) {
+          setActiveCycle(cycle)
+        }
+      })
+      .catch((err) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[employee create goal sheet] active cycle load failed:', err)
+        }
+        if (!cancelled) {
+          setErrorMessage('Could not load the active goal cycle.')
+        }
+      })
+
     return () => {
       cancelled = true
     }
   }, [])
 
   useEffect(() => {
-    if (
-      !isSupabaseConfigured() ||
-      !liveProfile ||
-      !activeCycle ||
-      !isRealUuid(liveProfile.id) ||
-      !isRealUuid(activeCycle.id)
-    ) {
+    let cancelled = false
+    getThrustAreaNames()
+      .then((areas) => {
+        if (!cancelled) {
+          setThrustAreaOptions(areas)
+        }
+      })
+      .catch((err) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[employee create goal sheet] thrust areas load failed:', err)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      return
+    }
+
+    if (!liveProfile || !activeCycle) {
+      return
+    }
+
+    if (!isRealUuid(liveProfile.id) || !isRealUuid(activeCycle.id)) {
+      setErrorMessage('Could not load your live goal sheet because the profile or cycle id is invalid.')
       return
     }
 
     let cancelled = false
     const employeeProfile = liveProfile
     const cycle = activeCycle
-    async function loadExistingSheet() {
+
+    async function loadGoalSheet() {
       setIsLoadingSheet(true)
-      const result = await getCurrentEmployeeGoalSheetWithGoals({
-        employeeId: employeeProfile.id,
-        cycleId: cycle.id,
-        employeeName: employeeProfile.name,
-        department: employeeProfile.department,
-        managerName: employeeProfile.managerName,
-        cycleName: cycle.name,
-      })
+      setErrorMessage(null)
 
-      if (cancelled) return
+      try {
+        const result = await getCurrentEmployeeGoalSheetWithGoals({
+          employeeId: employeeProfile.id,
+          cycleId: cycle.id,
+          employeeName: employeeProfile.name,
+          department: employeeProfile.department,
+          managerName: employeeProfile.managerName,
+          cycleName: cycle.name,
+        })
 
-      if (result) {
-        setGoals(
-          result.goals.length > 0
-            ? result.goals.map((goal) => ({
-                id: goal.id,
-                title: goal.title,
-                description: goal.description,
-                thrustArea: goal.thrustArea === '—' ? '' : goal.thrustArea,
-                unitOfMeasurement: goal.unitOfMeasurement,
-                target:
-                  goal.unitOfMeasurement === 'timeline'
-                    ? ''
-                    : goal.unitOfMeasurement === 'zero-based'
-                      ? '0'
-                      : goal.target.toString(),
-                targetDate: goal.targetDate ?? '',
-                weightage: goal.weightage.toString(),
-                isShared: goal.isShared ?? false,
-              }))
-            : [emptyGoal('draft-1')]
+        if (cancelled) return
+
+        if (result) {
+          setGoalSheetId(result.goalSheet.id)
+          setGoalSheetStatus(normalizeSheetStatus(result.goalSheet.status))
+          setGoalSheetIsLocked(Boolean(result.goalSheet.isLocked))
+          setUnlockedAt(result.goalSheet.unlockedAt ?? null)
+          setUnlockReason(result.goalSheet.unlockReason ?? null)
+          setManagerFeedback(result.goalSheet.managerComments)
+          setGoals(draftGoalsFromGoals(result.goals))
+          setNextDraftId(Math.max(result.goals.length + 1, 2))
+          return
+        }
+
+        const createdSheet = await getOrCreateCurrentGoalSheet(
+          employeeProfile.id,
+          cycle.id,
+          employeeProfile.managerId ?? null
         )
-        setNextDraftId(Math.max(result.goals.length + 1, 2))
-        setGoalSheetStatus(result.goalSheet.status)
-        setGoalSheetIsLocked(Boolean(result.goalSheet.isLocked))
-        setUnlockReason(result.goalSheet.unlockReason ?? null)
-        setUnlockedAt(result.goalSheet.unlockedAt ?? null)
-        setManagerFeedback(result.goalSheet.managerComments)
-        const editable =
-          !result.goalSheet.isLocked && isEditableGoalSheetStatus(result.goalSheet.status)
-        setIsSubmitted(!editable)
-        setCurrentStep(editable ? 1 : 4)
-      }
 
-      setIsLoadingSheet(false)
+        if (cancelled) return
+
+        if (!createdSheet) {
+          setErrorMessage('Could not load or create your draft goal sheet.')
+          return
+        }
+
+        setGoalSheetId(createdSheet.id)
+        setGoalSheetStatus(normalizeSheetStatus(createdSheet.status))
+        setGoalSheetIsLocked(Boolean(createdSheet.isLocked))
+        setUnlockedAt(createdSheet.unlockedAt)
+        setUnlockReason(createdSheet.unlockReason)
+        setManagerFeedback(createdSheet.managerComment)
+        setGoals([emptyGoal('draft-1')])
+        setNextDraftId(2)
+      } catch (err) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[employee create goal sheet] load failed:', err)
+        }
+        if (!cancelled) {
+          setErrorMessage(
+            err instanceof Error ? err.message : 'Could not load your goal sheet.'
+          )
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingSheet(false)
+        }
+      }
     }
 
-    loadExistingSheet()
+    loadGoalSheet()
 
     return () => {
       cancelled = true
@@ -259,41 +344,38 @@ export default function CreateGoalSheetPage() {
   }, [activeCycle, liveProfile])
 
   useEffect(() => {
-    let cancelled = false
-    getThrustAreaNames().then((areas) => {
-      if (!cancelled) {
-        setThrustAreaOptions(areas)
-      }
-    })
-    return () => {
-      cancelled = true
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[employee create goal sheet]', {
+        goalSheetId,
+        goalSheetStatus,
+        goalSheetIsLocked,
+        unlockedAt,
+        unlockReason,
+        canEdit,
+        isReadOnly,
+      })
     }
-  }, [])
+  }, [canEdit, goalSheetId, goalSheetIsLocked, goalSheetStatus, isReadOnly, unlockReason, unlockedAt])
 
-  const isReadOnly = !isEditableGoalSheetStatus(goalSheetStatus) || goalSheetIsLocked
-  const isAdminUnlockedForRework = Boolean(
-    !goalSheetIsLocked &&
-      unlockedAt &&
-      (goalSheetStatus === 'returned' || goalSheetStatus === 'rework-required')
+  const totalWeightage = useMemo(
+    () => goals.reduce((sum, goal) => sum + (parseInt(goal.weightage, 10) || 0), 0),
+    [goals]
   )
-
-  const totalWeightage = goals.reduce((sum, g) => sum + (parseInt(g.weightage, 10) || 0), 0)
-  const goalsCount = goals.filter((g) => g.title.trim()).length
-
+  const goalsCount = goals.filter((goal) => goal.title.trim()).length
   const validationErrors = {
     weightageNot100: totalWeightage !== 100 && goalsCount > 0,
     maxGoalsExceeded: goals.length > 8,
     minWeightageBreach: goals.some(
-      (g) => parseInt(g.weightage, 10) > 0 && parseInt(g.weightage, 10) < 10
+      (goal) => parseInt(goal.weightage, 10) > 0 && parseInt(goal.weightage, 10) < 10
     ),
-    incompleteGoals: goals.some((g) => {
-      if (!g.title.trim()) {
+    incompleteGoals: goals.some((goal) => {
+      if (!goal.title.trim()) {
         return false
       }
-      return !g.thrustArea || !g.weightage || !hasValidTarget(g, activeCycle)
+      return !goal.thrustArea || !goal.weightage || !hasValidTarget(goal, activeCycle)
     }),
     invalidTargets: goals.some(
-      (g) => g.title.trim() && !hasValidTarget(g, activeCycle)
+      (goal) => goal.title.trim() && !hasValidTarget(goal, activeCycle)
     ),
   }
 
@@ -306,13 +388,9 @@ export default function CreateGoalSheetPage() {
     goalsCount >= 1
 
   const addGoal = () => {
-    if (goals.length < 8 && !isReadOnly) {
-      setGoals((currentGoals) => [
-        ...currentGoals,
-        emptyGoal(`draft-${nextDraftId}`),
-      ])
-      setNextDraftId((current) => current + 1)
-    }
+    if (isReadOnly || goals.length >= 8) return
+    setGoals((currentGoals) => [...currentGoals, emptyGoal(`draft-${nextDraftId}`)])
+    setNextDraftId((current) => current + 1)
   }
 
   const removeGoalAt = (goalIndex: number) => {
@@ -353,9 +431,22 @@ export default function CreateGoalSheetPage() {
     }))
   }
 
+  const updateSheetFromRecord = (sheet: GoalSheetRecord) => {
+    setGoalSheetId(sheet.id)
+    setGoalSheetStatus(normalizeSheetStatus(sheet.status))
+    setGoalSheetIsLocked(Boolean(sheet.isLocked))
+    setUnlockedAt(sheet.unlockedAt)
+    setUnlockReason(sheet.unlockReason)
+  }
+
   const handleSaveDraft = async () => {
     setErrorMessage(null)
     setStatusMessage(null)
+
+    if (!canEdit) {
+      setErrorMessage('This goal sheet is not editable.')
+      return
+    }
 
     if (canPersistToSupabase && employeeId && activeCycle) {
       setIsSaving(true)
@@ -373,13 +464,16 @@ export default function CreateGoalSheetPage() {
         }
 
         if (result.goalSheet) {
-          setGoalSheetStatus(normalizeGoalSheetStatus(result.goalSheet.status))
-          setGoalSheetIsLocked(result.goalSheet.isLocked)
-          setUnlockReason(result.goalSheet.unlockReason)
-          setUnlockedAt(result.goalSheet.unlockedAt)
-          setIsSubmitted(false)
+          updateSheetFromRecord(result.goalSheet)
         }
+
         setStatusMessage('Draft saved to Supabase.')
+        toast({ title: 'Draft saved', description: 'Your goal sheet draft was saved.' })
+      } catch (err) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[employee create goal sheet] save draft failed:', err)
+        }
+        setErrorMessage(err instanceof Error ? err.message : 'Could not save draft.')
       } finally {
         setIsSaving(false)
       }
@@ -387,26 +481,27 @@ export default function CreateGoalSheetPage() {
     }
 
     if (isSupabaseConfigured()) {
-      if (!liveProfile) {
-        setErrorMessage(profileError ?? 'No profile found for this signed-in user.')
-        return
-      }
-      if (!activeCycle) {
-        setErrorMessage('No active goal cycle is configured.')
-        return
-      }
-      if (!managerId) {
-        setErrorMessage('No manager is assigned to your profile. Please contact Admin/HR.')
-        return
-      }
+      setErrorMessage(
+        profileError ??
+          (!activeCycle
+            ? 'No active goal cycle is configured.'
+            : 'No live employee profile was found for this signed-in user.')
+      )
+      return
     }
 
     setStatusMessage('Draft saved locally for demo.')
+    toast({ title: 'Draft saved', description: 'Your local draft was saved.' })
   }
 
   const handleSubmit = async () => {
     setErrorMessage(null)
     setStatusMessage(null)
+
+    if (!canEdit) {
+      setErrorMessage('This goal sheet is not editable.')
+      return
+    }
 
     if (!isValid) {
       setErrorMessage('Please fix validation errors before submitting.')
@@ -428,12 +523,24 @@ export default function CreateGoalSheetPage() {
           return
         }
 
-        setGoalSheetStatus('pending-approval')
-        setGoalSheetIsLocked(false)
-        setIsSubmitted(true)
-        setCurrentStep(4)
+        if (result.goalSheet) {
+          updateSheetFromRecord(result.goalSheet)
+        } else {
+          setGoalSheetStatus('submitted')
+          setGoalSheetIsLocked(false)
+        }
+
         setManagerFeedback(null)
         setStatusMessage('Goal sheet submitted for manager approval.')
+        toast({
+          title: isAdminUnlockedForRework ? 'Goal sheet resubmitted' : 'Goal sheet submitted',
+          description: 'Your manager can now review this goal sheet.',
+        })
+      } catch (err) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[employee create goal sheet] submit failed:', err)
+        }
+        setErrorMessage(err instanceof Error ? err.message : 'Could not submit goal sheet.')
       } finally {
         setIsSubmitting(false)
       }
@@ -441,46 +548,39 @@ export default function CreateGoalSheetPage() {
     }
 
     if (isSupabaseConfigured()) {
-      if (!liveProfile) {
-        setErrorMessage(profileError ?? 'No profile found for this signed-in user.')
-        return
-      }
-      if (!activeCycle) {
-        setErrorMessage('No active goal cycle is configured.')
-        return
-      }
-      if (!managerId) {
-        setErrorMessage('No manager is assigned to your profile. Please contact Admin/HR.')
-        return
-      }
+      setErrorMessage(
+        profileError ??
+          (!activeCycle
+            ? 'No active goal cycle is configured.'
+            : 'No live employee profile was found for this signed-in user.')
+      )
+      return
     }
 
-    setCurrentStep(4)
-    setGoalSheetStatus('pending-approval')
-    setIsSubmitted(true)
+    setGoalSheetStatus('submitted')
+    setGoalSheetIsLocked(false)
     setStatusMessage('Goal sheet submitted locally for demo.')
   }
 
-  const statusBadge =
-    goalSheetStatus === 'approved' ||
-    goalSheetStatus === 'locked' ||
-    goalSheetStatus === 'final-closed' ? (
+  const statusBadge = goalSheetIsLocked || goalSheetStatus === 'locked' ? (
     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
       Locked
     </Badge>
-  ) : goalSheetStatus === 'pending-approval' || goalSheetStatus === 'submitted' ? (
+  ) : isAdminUnlockedForRework ? (
+    <Badge variant="outline" className="bg-warning/10 text-warning-foreground border-warning/20">
+      Unlocked for Rework
+    </Badge>
+  ) : ['submitted', 'pending_approval', 'pending-approval'].includes(goalSheetStatus) ? (
     <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
       Submitted for Approval
     </Badge>
-  ) : goalSheetStatus === 'returned' ||
-    goalSheetStatus === 'rejected' ||
-    goalSheetStatus === 'rework-required' ? (
-    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
-      Returned for Rework
-    </Badge>
-  ) : (
+  ) : goalSheetStatus === 'draft' ? (
     <Badge variant="outline" className="bg-warning/10 text-warning-foreground border-warning/20">
       Draft
+    </Badge>
+  ) : (
+    <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+      {goalSheetStatus === 'approved' ? 'Approved' : 'Draft'}
     </Badge>
   )
 
@@ -503,22 +603,20 @@ export default function CreateGoalSheetPage() {
           </Alert>
         )}
 
-        {isEditableGoalSheetStatus(goalSheetStatus) && managerFeedback && !isAdminUnlockedForRework && (
+        {managerFeedback && canEdit && !isAdminUnlockedForRework && (
           <Alert className="border-destructive/30 bg-destructive/5">
             <AlertCircle className="h-4 w-4 text-destructive" />
             <AlertDescription className="text-destructive">
-              <span className="font-medium">Manager feedback:</span>{' '}
-              {managerFeedback}
+              <span className="font-medium">Manager feedback:</span> {managerFeedback}
             </AlertDescription>
           </Alert>
         )}
 
-        {isAdminUnlockedForRework && (
+        {isAdminUnlockedForRework && !goalSheetIsLocked && (
           <Alert className="border-warning/30 bg-warning/5">
             <Info className="h-4 w-4 text-warning-foreground" />
             <AlertDescription className="text-warning-foreground">
-              <span className="font-semibold">Admin unlocked this goal sheet for rework.</span>{' '}
-              You can edit and resubmit it for manager approval.
+              Admin unlocked this goal sheet for rework. Edit and resubmit for manager approval.
               {unlockReason && <span className="mt-1 block">Reason: {unlockReason}</span>}
             </AlertDescription>
           </Alert>
@@ -540,13 +638,13 @@ export default function CreateGoalSheetPage() {
             <Button
               variant="outline"
               onClick={handleSaveDraft}
-              disabled={isReadOnly || isSaving || isLoadingSheet}
+              disabled={!canEdit || isSaving || isLoadingSheet}
             >
               <Save className="mr-2 h-4 w-4" />
               {isSaving ? 'Saving...' : 'Save Draft'}
             </Button>
             <Button
-              disabled={!isValid || isReadOnly || isSubmitting || isLoadingSheet}
+              disabled={!canEdit || !isValid || isSubmitting || isLoadingSheet}
               onClick={handleSubmit}
             >
               <Send className="mr-2 h-4 w-4" />
@@ -568,22 +666,22 @@ export default function CreateGoalSheetPage() {
                     <div
                       className={`
                       flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium shadow-sm transition-all
-                      ${step.id < currentStep
+                      ${
+                        step.id < currentStep
                           ? 'bg-success text-success-foreground shadow-success/20'
                           : step.id === currentStep
                             ? 'bg-primary text-primary-foreground shadow-primary/25'
-                            : 'bg-muted text-muted-foreground'}
+                            : 'bg-muted text-muted-foreground'
+                      }
                     `}
                     >
-                      {step.id < currentStep ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : (
-                        step.id
-                      )}
+                      {step.id < currentStep ? <CheckCircle2 className="h-4 w-4" /> : step.id}
                     </div>
                     <div className="hidden sm:block">
                       <p
-                        className={`text-sm font-medium ${step.id === currentStep ? 'text-foreground' : 'text-muted-foreground'}`}
+                        className={`text-sm font-medium ${
+                          step.id === currentStep ? 'text-foreground' : 'text-muted-foreground'
+                        }`}
                       >
                         {step.name}
                       </p>
@@ -599,7 +697,13 @@ export default function CreateGoalSheetPage() {
           </CardContent>
         </Card>
 
-        <Card className={`border-border/60 bg-card/90 ${isValid ? 'border-success/50 bg-gradient-to-br from-success/10 via-card to-card' : 'bg-gradient-to-br from-warning/10 via-card to-card'}`}>
+        <Card
+          className={`border-border/60 bg-card/90 ${
+            isValid
+              ? 'border-success/50 bg-gradient-to-br from-success/10 via-card to-card'
+              : 'bg-gradient-to-br from-warning/10 via-card to-card'
+          }`}
+        >
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               {isValid ? (
@@ -614,10 +718,11 @@ export default function CreateGoalSheetPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="flex items-center gap-3">
                 <div
-                  className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg shadow-sm
-                  ${totalWeightage === 100 ? 'bg-success/10 text-success shadow-success/10' : 'bg-warning/10 text-warning-foreground shadow-warning/10'}
-                `}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${
+                    totalWeightage === 100
+                      ? 'bg-success/10 text-success shadow-success/10'
+                      : 'bg-warning/10 text-warning-foreground shadow-warning/10'
+                  }`}
                 >
                   <span className="text-sm font-semibold">{totalWeightage}%</span>
                 </div>
@@ -629,10 +734,11 @@ export default function CreateGoalSheetPage() {
 
               <div className="flex items-center gap-3">
                 <div
-                  className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg shadow-sm
-                  ${goalsCount >= 1 && goalsCount <= 8 ? 'bg-success/10 text-success shadow-success/10' : 'bg-warning/10 text-warning-foreground shadow-warning/10'}
-                `}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${
+                    goalsCount >= 1 && goalsCount <= 8
+                      ? 'bg-success/10 text-success shadow-success/10'
+                      : 'bg-warning/10 text-warning-foreground shadow-warning/10'
+                  }`}
                 >
                   <span className="text-sm font-semibold">{goalsCount}/8</span>
                 </div>
@@ -644,10 +750,11 @@ export default function CreateGoalSheetPage() {
 
               <div className="flex items-center gap-3">
                 <div
-                  className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg shadow-sm
-                  ${!validationErrors.minWeightageBreach ? 'bg-success/10 text-success shadow-success/10' : 'bg-destructive/10 text-destructive shadow-destructive/10'}
-                `}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${
+                    !validationErrors.minWeightageBreach
+                      ? 'bg-success/10 text-success shadow-success/10'
+                      : 'bg-destructive/10 text-destructive shadow-destructive/10'
+                  }`}
                 >
                   {!validationErrors.minWeightageBreach ? (
                     <CheckCircle2 className="h-4 w-4" />
@@ -663,10 +770,11 @@ export default function CreateGoalSheetPage() {
 
               <div className="flex items-center gap-3">
                 <div
-                  className={`
-                  flex h-10 w-10 items-center justify-center rounded-lg shadow-sm
-                  ${!validationErrors.incompleteGoals ? 'bg-success/10 text-success shadow-success/10' : 'bg-warning/10 text-warning-foreground shadow-warning/10'}
-                `}
+                  className={`flex h-10 w-10 items-center justify-center rounded-lg shadow-sm ${
+                    !validationErrors.incompleteGoals
+                      ? 'bg-success/10 text-success shadow-success/10'
+                      : 'bg-warning/10 text-warning-foreground shadow-warning/10'
+                  }`}
                 >
                   {!validationErrors.incompleteGoals ? (
                     <CheckCircle2 className="h-4 w-4" />
@@ -696,7 +804,7 @@ export default function CreateGoalSheetPage() {
                       </Badge>
                     )}
                   </div>
-                  {goals.length > 1 && !isReadOnly && (
+                  {goals.length > 1 && canEdit && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -717,7 +825,7 @@ export default function CreateGoalSheetPage() {
                       id={`title-${goal.id}`}
                       placeholder="e.g., Improve API response time by 40%"
                       value={goal.title}
-                      onChange={(e) => updateGoalFieldAt(index, 'title', e.target.value)}
+                      onChange={(event) => updateGoalFieldAt(index, 'title', event.target.value)}
                       disabled={isReadOnly || goal.isShared}
                     />
                   </div>
@@ -748,7 +856,7 @@ export default function CreateGoalSheetPage() {
                     id={`desc-${goal.id}`}
                     placeholder="Describe the goal and success criteria..."
                     value={goal.description}
-                    onChange={(e) => updateGoalFieldAt(index, 'description', e.target.value)}
+                    onChange={(event) => updateGoalFieldAt(index, 'description', event.target.value)}
                     rows={2}
                     disabled={isReadOnly || goal.isShared}
                   />
@@ -759,18 +867,16 @@ export default function CreateGoalSheetPage() {
                     <Label htmlFor={`uom-${goal.id}`}>Unit of Measurement *</Label>
                     <Select
                       value={goal.unitOfMeasurement}
-                      onValueChange={(value) =>
-                        updateGoalUnitAt(index, value as UnitOfMeasurement)
-                      }
+                      onValueChange={(value) => updateGoalUnitAt(index, value as UnitOfMeasurement)}
                       disabled={isReadOnly || goal.isShared}
                     >
                       <SelectTrigger id={`uom-${goal.id}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {uomOptions.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                        {uomOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -785,9 +891,13 @@ export default function CreateGoalSheetPage() {
                         min={activeCycle?.startDate}
                         max={activeCycle?.endDate}
                         value={goal.targetDate}
-                        onChange={(e) => updateGoalFieldAt(index, 'targetDate', e.target.value)}
+                        onChange={(event) => updateGoalFieldAt(index, 'targetDate', event.target.value)}
                         disabled={isReadOnly || goal.isShared}
-                        className={!hasValidTarget(goal, activeCycle) && goal.title.trim() ? 'border-destructive' : ''}
+                        className={
+                          !hasValidTarget(goal, activeCycle) && goal.title.trim()
+                            ? 'border-destructive'
+                            : ''
+                        }
                       />
                     ) : (
                       <Input
@@ -797,14 +907,18 @@ export default function CreateGoalSheetPage() {
                         min={0}
                         max={isPercentageUom(goal.unitOfMeasurement) ? 100 : undefined}
                         value={goal.unitOfMeasurement === 'zero-based' ? '0' : goal.target}
-                        onChange={(e) => updateGoalFieldAt(index, 'target', e.target.value)}
+                        onChange={(event) => updateGoalFieldAt(index, 'target', event.target.value)}
                         disabled={
                           isReadOnly ||
                           goal.isShared ||
                           goal.unitOfMeasurement === 'zero-based'
                         }
                         readOnly={goal.unitOfMeasurement === 'zero-based' || goal.isShared}
-                        className={!hasValidTarget(goal, activeCycle) && goal.title.trim() ? 'border-destructive' : ''}
+                        className={
+                          !hasValidTarget(goal, activeCycle) && goal.title.trim()
+                            ? 'border-destructive'
+                            : ''
+                        }
                       />
                     )}
                     {goal.title.trim() && !hasValidTarget(goal, activeCycle) && (
@@ -830,7 +944,7 @@ export default function CreateGoalSheetPage() {
                       min={10}
                       max={100}
                       value={goal.weightage}
-                      onChange={(e) => updateGoalFieldAt(index, 'weightage', e.target.value)}
+                      onChange={(event) => updateGoalFieldAt(index, 'weightage', event.target.value)}
                       disabled={isReadOnly || goal.isShared}
                       className={
                         parseInt(goal.weightage, 10) > 0 && parseInt(goal.weightage, 10) < 10
@@ -848,7 +962,7 @@ export default function CreateGoalSheetPage() {
           ))}
         </div>
 
-        {goals.length < 8 && !isReadOnly && (
+        {goals.length < 8 && canEdit && (
           <Button variant="outline" className="w-full border-dashed" onClick={addGoal}>
             <Plus className="mr-2 h-4 w-4" />
             Add Goal ({goals.length}/8)

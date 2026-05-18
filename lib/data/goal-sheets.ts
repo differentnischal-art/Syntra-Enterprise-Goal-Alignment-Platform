@@ -139,16 +139,7 @@ function computeTotals(goals: GoalSheetGoalInput[]) {
 }
 
 export function isEditableGoalSheetStatus(status: string | null | undefined): boolean {
-  return (
-    status === 'draft' ||
-    status === 'returned' ||
-    status === 'returned_for_rework' ||
-    status === 'returned-for-rework' ||
-    status === 'rejected' ||
-    status === 'rework_required' ||
-    status === 'rework-required' ||
-    status === 'unlocked'
-  )
+  return status === 'draft'
 }
 
 export function isGoalSheetEditableForEmployee(
@@ -573,7 +564,7 @@ export async function saveGoalSheetDraft(
     if (!isGoalSheetEditableForEmployee(sheet)) {
       return {
         goalSheet: null,
-        error: 'Goal sheet can only be edited while unlocked, draft, or returned for rework.',
+        error: 'Goal sheet can only be edited while it is an unlocked draft.',
       }
     }
 
@@ -742,6 +733,7 @@ export async function submitGoalSheet(
         total_weightage: 100,
         goals_count: goals.length,
         submitted_at: now,
+        updated_at: now,
         approved_at: null,
         approved_by: null,
         locked_at: null,

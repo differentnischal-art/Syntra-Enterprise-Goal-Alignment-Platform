@@ -125,6 +125,10 @@ export async function getCurrentProfile(): Promise<User | null> {
       return null
     }
 
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[auth debug] user id:', user.id)
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .select(PROFILE_SELECT)
@@ -211,7 +215,7 @@ export async function getProfileById(profileId: string): Promise<User | null> {
 }
 
 export async function getProfilesByRole(
-  role: 'employee' | 'manager' | 'admin'
+  role: UserRole
 ): Promise<User[]> {
   if (!isSupabaseConfigured()) {
     return []

@@ -38,7 +38,7 @@ export function getMockUserForPath(pathname: string): User {
 }
 
 export function getRoleWorkspaceLabel(role: UserRole): string {
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'hr') {
     return 'Admin'
   }
   if (role === 'manager') {
@@ -48,7 +48,7 @@ export function getRoleWorkspaceLabel(role: UserRole): string {
 }
 
 export function getRoleProfileLabel(role: UserRole): string {
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'hr') {
     return 'Administrator / HR'
   }
   if (role === 'manager') {
@@ -72,7 +72,9 @@ export function useCurrentProfile() {
 
   const profile = liveProfile ?? (!isSupabaseConfigured() ? mockFallback : null)
   const hasRoleMismatch = Boolean(
-    liveProfile && liveProfile.role !== workspaceRole
+    liveProfile &&
+      liveProfile.role !== workspaceRole &&
+      !(workspaceRole === 'admin' && liveProfile.role === 'hr')
   )
 
   useEffect(() => {
@@ -95,6 +97,11 @@ export function useCurrentProfile() {
         const loaded = await getCurrentProfile()
 
         if (cancelled) return
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[auth debug] profile:', loaded)
+          console.log('[auth debug] role:', loaded?.role)
+        }
 
         if (loaded) {
           setLiveProfile(loaded)

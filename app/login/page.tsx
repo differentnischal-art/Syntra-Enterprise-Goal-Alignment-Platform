@@ -32,7 +32,7 @@ import { getCurrentProfile } from '@/lib/data/profiles'
 import type { UserRole } from '@/lib/types'
 
 function redirectPathForRole(role: UserRole): string {
-  if (role === 'admin') return '/admin'
+  if (role === 'admin' || role === 'hr') return '/admin'
   if (role === 'manager') return '/manager'
   return '/employee'
 }
@@ -90,6 +90,14 @@ export default function LoginPage() {
         }
 
         const profile = await getCurrentProfile()
+        const targetPath = profile ? redirectPathForRole(profile.role) : null
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[auth debug] user id:', result.session?.user?.id)
+          console.log('[auth debug] profile:', profile)
+          console.log('[auth debug] role:', profile?.role)
+          console.log('[auth debug] redirect target:', targetPath)
+        }
 
         if (!profile) {
           setAuthError(
@@ -98,7 +106,7 @@ export default function LoginPage() {
           return
         }
 
-        router.push(redirectPathForRole(profile.role))
+        router.push(targetPath ?? '/employee')
       } finally {
         setIsLoading(false)
       }
@@ -153,8 +161,17 @@ export default function LoginPage() {
 
       if (result.session) {
         const profile = await getCurrentProfile()
+        const targetPath = profile ? redirectPathForRole(profile.role) : null
+
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[auth debug] user id:', result.session.user?.id)
+          console.log('[auth debug] profile:', profile)
+          console.log('[auth debug] role:', profile?.role)
+          console.log('[auth debug] redirect target:', targetPath)
+        }
+
         if (profile) {
-          router.push(redirectPathForRole(profile.role))
+          router.push(targetPath ?? '/employee')
         }
       }
     } finally {

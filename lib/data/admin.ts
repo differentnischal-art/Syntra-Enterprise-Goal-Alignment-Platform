@@ -5,7 +5,7 @@ import { createNotification } from '@/lib/data/notifications'
 import { isRealUuid, mapUomFromDb } from '@/lib/data/goals'
 import { createClient } from '@/lib/supabase/client'
 import { isSupabaseConfigured } from '@/lib/supabase/env'
-import type { GoalStatus, UnitOfMeasurement, User } from '@/lib/types'
+import type { GoalStatus, UnitOfMeasurement, User, UserRole } from '@/lib/types'
 
 type Relation<T> = T | T[] | null | undefined
 
@@ -14,7 +14,7 @@ type ProfileRow = {
   id: string
   full_name: string
   email: string
-  role: 'employee' | 'manager' | 'admin'
+  role: UserRole
   manager_id: string | null
   departments?: Relation<DepartmentRef>
 }
@@ -163,6 +163,12 @@ export type AdminCycle = {
   endDate: string
   status: 'active' | 'closed' | 'upcoming'
   windows: AdminCycleWindow[]
+}
+
+type UnlockGoalSheetForReworkParams = {
+  goalSheetId: string
+  reason: string
+  adminProfileId: string
 }
 
 function first<T>(relation: Relation<T>): T | null {
@@ -675,120 +681,128 @@ export async function getUnlockableGoalSheets(): Promise<
     })
 }
 
-export async function unlockGoalSheet(
-  goalSheetId: string,
-  admin: User,
-  reason: string
-): Promise<{ success: boolean; error: string | null }> {
-  if (!isSupabaseConfigured() || !isRealUuid(goalSheetId) || !isRealUuid(admin.id)) {
-    return { success: false, error: 'Live admin session is required.' }
+export async function unlockGoalSheetForRework({
+  goalSheetId,
+  reason,
+  adminProfileId,
+}: UnlockGoalSheetForReworkParams): Promise<void> {
+  const cleanGoalSheetId = String(goalSheetId ?? '').trim()
+
+  if (!cleanGoalSheetId) {
+    throw new Error('Missing goal sheet id for unlock')
+  }
+
+  if (!isSupabaseConfigured() || !isRealUuid(cleanGoalSheetId) || !isRealUuid(adminProfileId)) {
+    throw new Error('Live admin session is required.')
   }
 
   const trimmedReason = reason.trim()
   if (!trimmedReason) {
-    return { success: false, error: 'Unlock reason is required.' }
+    throw new Error('Unlock reason is required.')
   }
 
   const supabase = createClient()
-  if (!supabase) return { success: false, error: 'Supabase client unavailable.' }
+  if (!supabase) throw new Error('Supabase client unavailable.')
 
-  const { data: sheet, error: loadError } = await supabase
+  const { data: goalSheetRef, error: goalSheetRefError } = await supabase
     .from('goal_sheets')
-    .select('id, employee_id, status, is_locked')
-    .eq('id', goalSheetId)
+    .select('id,employee_id')
+    .eq('id', cleanGoalSheetId)
     .maybeSingle()
 
-  if (loadError || !sheet) {
-    return { success: false, error: loadError?.message ?? 'Goal sheet not found.' }
+  if (goalSheetRefError) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[admin unlock] goal sheet lookup failed:', goalSheetRefError)
+    }
+    throw goalSheetRefError
   }
 
-  const oldStatus = (sheet as { status: string }).status
-  if (!['approved', 'locked'].includes(oldStatus) && !(sheet as { is_locked?: boolean }).is_locked) {
-    return { success: false, error: 'Only approved or locked goal sheets can be unlocked.' }
+  if (!goalSheetRef) {
+    throw new Error('Unlock failed: goal sheet row not found')
   }
 
   const now = new Date().toISOString()
-  const updatePayload = {
-    status: 'returned_for_rework',
+  const unlockPayload = {
+    status: 'draft',
     is_locked: false,
+    approved_at: null,
+    locked_at: null,
     unlocked_at: now,
-    unlocked_by: admin.id,
+    unlocked_by: adminProfileId,
     unlock_reason: trimmedReason,
     updated_at: now,
   }
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[unlockGoalSheet] selected goalSheetId:', goalSheetId)
-    console.log('[unlockGoalSheet] update payload:', updatePayload)
-  }
-
   const { error: updateSheetError } = await supabase
     .from('goal_sheets')
-    .update(updatePayload)
-    .eq('id', goalSheetId)
-
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[unlockGoalSheet] update error:', updateSheetError?.message ?? null)
-  }
+    .update(unlockPayload)
+    .eq('id', cleanGoalSheetId)
 
   if (updateSheetError) {
-    console.error('[unlockGoalSheet] failed to update goal_sheets:', updateSheetError.message)
-    return { success: false, error: updateSheetError.message }
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[admin unlock] goal_sheets update failed:', updateSheetError)
+    }
+    throw updateSheetError
   }
 
   const { data: verifyRow, error: verifyError } = await supabase
     .from('goal_sheets')
-    .select('id,status,is_locked,unlocked_at,unlocked_by,unlock_reason,updated_at')
-    .eq('id', goalSheetId)
-    .single()
-
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[unlockGoalSheet] verify:', verifyRow)
-  }
+    .select('id,status,is_locked,approved_at,locked_at,unlocked_at,unlock_reason')
+    .eq('id', cleanGoalSheetId)
+    .maybeSingle()
 
   if (verifyError) {
-    console.error('[unlockGoalSheet] verify error:', verifyError.message)
-    return { success: false, error: verifyError.message }
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[admin unlock] verify failed:', verifyError)
+    }
+    throw verifyError
+  }
+
+  if (!verifyRow) {
+    throw new Error('Unlock failed: goal sheet row not found after update')
   }
 
   if (
-    !verifyRow ||
-    verifyRow.status !== 'returned_for_rework' ||
-    verifyRow.is_locked === true ||
-    !verifyRow.unlocked_at ||
-    !verifyRow.unlock_reason
+    verifyRow.status !== 'draft' ||
+    verifyRow.is_locked !== false ||
+    verifyRow.approved_at !== null ||
+    verifyRow.locked_at !== null ||
+    !verifyRow.unlocked_at
   ) {
-    return { success: false, error: 'Unlock failed: goal sheet state did not change.' }
+    throw new Error('Unlock failed: goal sheet state did not change')
   }
 
   const { error: updateGoalsError } = await supabase
     .from('goals')
-    .update({ is_locked: false, approval_status: 'returned' })
-    .eq('goal_sheet_id', goalSheetId)
+    .update({
+      is_locked: false,
+      updated_at: now,
+    })
+    .eq('goal_sheet_id', cleanGoalSheetId)
 
   if (updateGoalsError) {
-    return { success: false, error: updateGoalsError.message }
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[admin unlock] goals update failed:', updateGoalsError)
+    }
+    throw updateGoalsError
   }
 
   await createAuditLog({
-    actorId: admin.id,
+    actorId: adminProfileId,
     actorRole: 'admin',
-    employeeId: (sheet as { employee_id: string }).employee_id,
-    goalSheetId,
+    employeeId: (goalSheetRef as { employee_id: string }).employee_id,
+    goalSheetId: cleanGoalSheetId,
     actionType: 'goal_sheet_unlocked',
-    fieldChanged: 'Goal Sheet Status',
-    oldValue: oldStatus,
-    newValue: 'returned_for_rework',
+    fieldChanged: 'Goal Sheet Unlocked',
+    newValue: 'draft',
     description: `Admin unlocked goal sheet for rework: ${trimmedReason}`,
   })
 
   await createNotification({
-    userId: (sheet as { employee_id: string }).employee_id,
+    userId: (goalSheetRef as { employee_id: string }).employee_id,
     type: 'goal_returned',
     title: 'Goal Sheet Unlocked',
     message: 'Admin unlocked your goal sheet for rework. Edit and resubmit for manager approval.',
     link: '/employee/create-goal-sheet',
   })
-
-  return { success: true, error: null }
 }

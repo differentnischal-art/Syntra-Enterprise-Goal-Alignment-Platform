@@ -1,4 +1,4 @@
-export type UserRole = 'employee' | 'manager' | 'admin'
+export type UserRole = 'employee' | 'manager' | 'admin' | 'hr'
 
 export type GoalStatus = 'not-started' | 'on-track' | 'completed' | 'overdue'
 

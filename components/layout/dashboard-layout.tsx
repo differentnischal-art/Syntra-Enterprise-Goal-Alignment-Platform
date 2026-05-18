@@ -29,7 +29,12 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
     isUsingMockFallback,
     error: profileError,
   } = useCurrentProfile()
-  const effectiveRole = liveProfile?.role ?? role
+  const effectiveRole = liveProfile?.role === 'hr' ? 'admin' : (liveProfile?.role ?? role)
+  const hasWorkspaceAccess = Boolean(
+    !liveProfile ||
+      liveProfile.role === role ||
+      (role === 'admin' && liveProfile.role === 'hr')
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -50,21 +55,21 @@ export function DashboardLayout({ children, role }: DashboardLayoutProps) {
   }, [])
 
   useEffect(() => {
-    if (isProfileLoading || !liveProfile || liveProfile.role === role) {
+    if (isProfileLoading || !liveProfile || hasWorkspaceAccess) {
       return
     }
 
     const path =
-      liveProfile.role === 'admin'
+      liveProfile.role === 'admin' || liveProfile.role === 'hr'
         ? '/admin'
         : liveProfile.role === 'manager'
           ? '/manager'
           : '/employee'
 
     router.replace(`${path}?access=denied`)
-  }, [isProfileLoading, liveProfile, role, router])
+  }, [hasWorkspaceAccess, isProfileLoading, liveProfile, router])
 
-  if (!isProfileLoading && liveProfile && liveProfile.role !== role) {
+  if (!isProfileLoading && liveProfile && !hasWorkspaceAccess) {
     return (
       <div className="min-h-screen bg-background p-6">
         <Alert className="border-warning/30 bg-warning/5">

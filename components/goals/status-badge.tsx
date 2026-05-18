@@ -27,6 +27,7 @@ export function StatusBadge({ status, type = 'goal' }: StatusBadgeProps) {
   if (type === 'sheet') {
     const sheetConfig = {
       'draft': { label: 'Draft', className: 'bg-muted text-muted-foreground border-muted shadow-sm' },
+      'unlocked-for-rework': { label: 'Unlocked for Rework', className: 'bg-warning/10 text-warning-foreground border-warning/25 shadow-sm shadow-warning/10' },
       'submitted': { label: 'Submitted for Approval', className: 'bg-primary/10 text-primary border-primary/25 shadow-sm shadow-primary/10' },
       'pending-approval': { label: 'Submitted for Approval', className: 'bg-warning/10 text-warning-foreground border-warning/25 shadow-sm shadow-warning/10' },
       'approved': { label: 'Approved / Locked', className: 'bg-success/10 text-success border-success/25 shadow-sm shadow-success/10' },
