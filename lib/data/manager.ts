@@ -43,6 +43,18 @@ type DbCheckInRow = {
   submitted_at: string | null
 }
 
+type DbCycleWindowRow = {
+  id: string
+  cycle_id: string
+  period: string
+  quarter: string | null
+  window_opens: string
+  window_closes: string | null
+  action: string
+  is_open: boolean | null
+  created_at: string
+}
+
 type DbAuditRow = {
   id: string
   employee_id: string | null
@@ -181,6 +193,64 @@ function checkInStatusForGoals(checkIns: DbCheckInRow[], goalIds: string[]) {
   return status
 }
 
+function emptyRosterCheckInStatuses(): NonNullable<TeamMember['checkInStatuses']> {
+  return { Q1: 'missing', Q2: 'missing', Q3: 'missing', Q4: 'missing' }
+}
+
+const normalizeQuarter = (quarter: string | null) =>
+  String(quarter ?? '').trim().toUpperCase()
+
+function checkInStatusesForGoals(
+  checkIns: DbCheckInRow[],
+  goalIds: string[],
+  inactiveQuarters: Set<'Q1' | 'Q2' | 'Q3' | 'Q4'>
+): NonNullable<TeamMember['checkInStatuses']> {
+  const goalIdSet = new Set(goalIds)
+  const statuses = emptyRosterCheckInStatuses()
+
+  for (const quarter of ['q1', 'q2', 'q3', 'q4'] as const) {
+    const quarterKey = quarter.toUpperCase() as keyof typeof statuses
+    const hasSubmittedCheckIn = checkIns.some(
+      (checkIn) =>
+        checkIn.quarter === quarter &&
+        goalIdSet.has(checkIn.goal_id) &&
+        Boolean(checkIn.submitted_at)
+    )
+
+    statuses[quarterKey] = hasSubmittedCheckIn
+      ? 'submitted'
+      : inactiveQuarters.has(quarterKey)
+        ? 'inactive'
+        : 'missing'
+  }
+
+  return statuses
+}
+
+function inactiveCheckInQuarters(windows: DbCycleWindowRow[]) {
+  const inactive = new Set<'Q1' | 'Q2' | 'Q3' | 'Q4'>()
+  const quarterLabels = ['Q1', 'Q2', 'Q3', 'Q4'] as const
+  const openByQuarter = new Map<(typeof quarterLabels)[number], boolean>()
+
+  for (const window of windows) {
+    const q = normalizeQuarter(window.quarter)
+    if (!quarterLabels.includes(q as (typeof quarterLabels)[number])) {
+      continue
+    }
+
+    const quarter = q as (typeof quarterLabels)[number]
+    openByQuarter.set(quarter, (openByQuarter.get(quarter) ?? false) || window.is_open === true)
+  }
+
+  for (const quarter of quarterLabels) {
+    if (openByQuarter.get(quarter) !== true) {
+      inactive.add(quarter)
+    }
+  }
+
+  return inactive
+}
+
 function mapActivity(row: DbAuditRow): ManagerActivity {
   return {
     id: row.id,
@@ -262,13 +332,36 @@ export async function getManagerLiveData(managerId: string): Promise<ManagerLive
   ])
 
   if (checkInsResult.error) {
-    throw new Error(checkInsResult.error.message)
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[manager roster check-ins] failed:', checkInsResult.error)
+    }
+    throw new Error('Could not load team roster check-in status. Please try again.')
   }
   if (auditResult.error) {
     throw new Error(auditResult.error.message)
   }
 
   const checkIns = (checkInsResult.data ?? []) as DbCheckInRow[]
+  const { data: windowsData, error: windowError } = activeCycle
+    ? await supabase
+        .from('cycle_windows')
+        .select('id, cycle_id, period, quarter, window_opens, window_closes, action, is_open, created_at')
+        .eq('cycle_id', activeCycle.id)
+        .not('quarter', 'is', null)
+    : { data: [], error: null }
+
+  if (windowError && process.env.NODE_ENV === 'development') {
+    console.error('[manager roster check-in windows] failed:', {
+      message: windowError.message,
+      details: windowError.details,
+      hint: windowError.hint,
+      code: windowError.code,
+      raw: windowError,
+    })
+  }
+
+  const cycleWindows = (windowsData ?? []) as DbCycleWindowRow[]
+  const inactiveQuarters = inactiveCheckInQuarters(cycleWindows)
   const teamGoals = sheets.flatMap((sheet) => {
     const employee = directReports.find((report) => report.id === sheet.employee_id)
     const employeeName = employee?.full_name ?? 'Employee'
@@ -288,6 +381,7 @@ export async function getManagerLiveData(managerId: string): Promise<ManagerLive
       checkIns,
       sheetGoals.map((goal) => goal.id)
     )
+    const goalIdsForEmployee = sheetGoals.map((goal) => goal.id)
     const achievement = average(achievementForGoals(sheetGoals, employeeCheckIns))
 
     return {
@@ -305,7 +399,12 @@ export async function getManagerLiveData(managerId: string): Promise<ManagerLive
       averageAchievement: achievement,
       checkIns: checkInStatusForGoals(
         employeeCheckIns,
-        sheetGoals.map((goal) => goal.id)
+        goalIdsForEmployee
+      ),
+      checkInStatuses: checkInStatusesForGoals(
+        employeeCheckIns,
+        goalIdsForEmployee,
+        inactiveQuarters
       ),
     }
   })

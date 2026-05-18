@@ -166,6 +166,12 @@ export interface TeamMember {
     Q3: boolean
     Q4: boolean
   }
+  checkInStatuses?: {
+    Q1: 'submitted' | 'missing' | 'inactive'
+    Q2: 'submitted' | 'missing' | 'inactive'
+    Q3: 'submitted' | 'missing' | 'inactive'
+    Q4: 'submitted' | 'missing' | 'inactive'
+  }
 }
 
 export interface AuditLog {
