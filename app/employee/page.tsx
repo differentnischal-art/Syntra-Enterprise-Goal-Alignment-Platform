@@ -152,7 +152,7 @@ export default function EmployeeDashboard() {
           goals.reduce((sum, g) => sum + (g.progress || 0), 0) / goals.length
         )
       : 0
-  const nextCheckIn = 'Nov 30, 2025'
+  const nextCheckIn = 'May 20, 2026'
   const sheetStatus = goalSheet?.status
   const isAdminUnlockedForRework = Boolean(
     goalSheet &&
