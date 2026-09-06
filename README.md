@@ -405,6 +405,8 @@ For judge access, ensure:
 
 ## Author
 
+**Nischal Adhikari**
+
 Built for **AtomQuest Hackathon 1.0**.
 
 **Project Name:** AlignOS — Enterprise Goal Setting & Tracking Portal  
