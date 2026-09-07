@@ -1,4 +1,4 @@
-# AlignOS — Enterprise Goal Setting & Tracking Port
+# AlignOS — Enterprise Goal Setting & Tracking Portal
 
 **AlignOS** is a web-based Enterprise Goal Setting and Tracking Portal built for **AtomQuest Hackathon 1.0**. It digitizes the complete organizational goal lifecycle: employee goal creation, manager approval, shared KPI alignment, quarterly achievement check-ins, evidence uploads, audit logs, reporting, and Admin/HR exception handling.
 
