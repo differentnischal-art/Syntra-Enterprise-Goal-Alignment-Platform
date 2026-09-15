@@ -21,6 +21,8 @@ The platform is designed for three core personas: **Employee**, **Manager**, and
 
 ## Demo Credentials
 
+All records are recorded in supabase
+
 ### Admin / HR
 
 | Role | Email | Password |
